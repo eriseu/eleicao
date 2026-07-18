@@ -4,51 +4,38 @@
 import { useDuelo } from '../hooks/useDuelo';
 
 export function DueloContainer() {
-  const {
-    rodadaAtual,
-    rodadaAtualIndex,
-    totalRodadas,
-    isFinalizado,
-    votos,
-    votar,
-    reiniciar,
-  } = useDuelo();
-
-  if (isFinalizado) {
-    return (
-      <div className="p-8 bg-white rounded-lg shadow text-center max-w-md mx-auto">
-        <h3 className="text-xl font-bold">Fim do Duelo!</h3>
-        <p className="my-4">Obrigado por votar em {Object.keys(votos).length} propostas.</p>
-        <button onClick={reiniciar} className="px-4 py-2 bg-blue-500 text-white rounded">
-          Jogar novamente
-        </button>
-      </div>
-    );
-  }
+  const { enviarVoto, votando, dueloVotado, novosScores } = useDuelo();
 
   return (
-    <div className="flex flex-col gap-6 max-w-xl mx-auto p-4">
-      <div className="text-center font-bold">
-        Rodada {rodadaAtualIndex + 1} de {totalRodadas}
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <button 
-          onClick={() => votar(rodadaAtual.opcaoA.id)}
-          className="p-6 bg-white border rounded hover:border-blue-500 transition-all"
+    <div className="p-6 max-w-md mx-auto">
+      <h3 className="text-lg font-bold">Duelo (temporário)</h3>
+      <p className="text-sm text-gray-500">Componente temporário usando a API de `useDuelo`.</p>
+
+      <div className="mt-4 flex gap-4">
+        <button
+          onClick={() => void enviarVoto('opcaoA', 'opcaoB', 1)}
+          disabled={votando}
+          className="px-4 py-2 bg-white border rounded hover:border-blue-500 transition-all"
         >
-          <p className="text-sm text-gray-500 mb-2">Opção A ({rodadaAtual.opcaoA.partido})</p>
-          <p>{rodadaAtual.opcaoA.texto}</p>
+          Votar Opção A
         </button>
 
-        <button 
-          onClick={() => votar(rodadaAtual.opcaoB.id)}
-          className="p-6 bg-white border rounded hover:border-blue-500 transition-all"
+        <button
+          onClick={() => void enviarVoto('opcaoB', 'opcaoA', 2)}
+          disabled={votando}
+          className="px-4 py-2 bg-white border rounded hover:border-blue-500 transition-all"
         >
-          <p className="text-sm text-gray-500 mb-2">Opção B ({rodadaAtual.opcaoB.partido})</p>
-          <p>{rodadaAtual.opcaoB.texto}</p>
+          Votar Opção B
         </button>
       </div>
+
+      {dueloVotado !== null && (
+        <p className="mt-4 text-sm text-green-600">Você votou na opção {dueloVotado}.</p>
+      )}
+
+      {novosScores && (
+        <p className="mt-2 text-sm text-slate-700">Scores atualizados: {novosScores.c1} — {novosScores.c2}</p>
+      )}
     </div>
   );
 }

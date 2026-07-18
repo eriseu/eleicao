@@ -111,7 +111,7 @@ export default function Duelo() {
         perdedor_id: perdedor.id
       });
 
-      alert(`Voto computado! ${vencedor.nome_urna} derrotou ${perdedor.nome_urna}.`);
+      alert(`Voto computado! ${vencedor.ultima_candidatura?.nome_urna} derrotou ${perdedor.ultima_candidatura?.nome_urna}.`);
     } catch (err) {
       console.error("Erro ao registrar voto:", err);
     }

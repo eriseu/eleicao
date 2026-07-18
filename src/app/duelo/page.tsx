@@ -141,7 +141,7 @@ export default function Duelo() {
         >
           <option value="">Selecione o Candidato 1</option>
           {candidates.map(c => (
-            <option key={c.id} value={c.id}>{c.nome_urna} ({c.partido})</option>
+            <option key={c.id} value={c.id}>{c.ultima_candidatura?.nome_urna} ({c.ultima_candidatura?.partido})</option>
           ))}
         </select>
 
@@ -152,7 +152,7 @@ export default function Duelo() {
         >
           <option value="">Selecione o Candidato 2</option>
           {candidates.map(c => (
-            <option key={c.id} value={c.id}>{c.nome_urna} ({c.partido})</option>
+            <option key={c.id} value={c.id}>{c.ultima_candidatura?.nome_urna} ({c.ultima_candidatura?.partido})</option>
           ))}
         </select>
       </div>

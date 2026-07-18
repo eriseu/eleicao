@@ -168,7 +168,7 @@ export default function Duelo() {
             >
               <CandidateImage candidato={c1} alt={c1.nome_completo} className="w-full h-full object-cover" />
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 text-left">
-                <p className="text-white font-bold text-xs truncate">{c1.nome_urna}</p>
+                <p className="text-white font-bold text-xs truncate">{c1.ultima_candidatura?.nome_urna}</p>
                 <p className="text-blue-300 font-mono text-[10px] font-bold">ELO: {c1.elo_score}</p>
               </div>
             </button>
@@ -180,7 +180,7 @@ export default function Duelo() {
             >
               <CandidateImage candidato={c2} alt={c2.nome_completo} className="w-full h-full object-cover" />
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 text-left">
-                <p className="text-white font-bold text-xs truncate">{c2.nome_urna}</p>
+                <p className="text-white font-bold text-xs truncate">{c2.ultima_candidatura?.nome_urna}</p>
                 <p className="text-blue-300 font-mono text-[10px] font-bold">ELO: {c2.elo_score}</p>
               </div>
             </button>

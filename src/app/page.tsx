@@ -64,6 +64,7 @@ export default function Home() {
           elo_score: perfil.elo_score,
           ultima_candidatura: candidaturaAtiva
             ? {
+                ...candidaturaAtiva,
                 ano_eleicao: candidaturaAtiva.ano_eleicao || perfil.ano,
                 uf: candidaturaAtiva.uf || perfil.uf,
                 sq_candidato:

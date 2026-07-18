@@ -48,7 +48,7 @@ export default function Home() {
         return;
       }
 
-      const mappedData = data.map((perfil) => {
+      const mappedData: Candidato[] = data.map((perfil) => {
         const listaCandidaturas = Array.isArray(perfil.candidaturas)
           ? perfil.candidaturas
           : [];
@@ -58,6 +58,9 @@ export default function Home() {
         return {
           id: perfil.id,
           nome_completo: perfil.nome_completo,
+          cpf: perfil.cpf,
+          titulo_eleitoral: perfil.titulo_eleitoral,
+          created_at: perfil.created_at,
           elo_score: perfil.elo_score,
           ultima_candidatura: candidaturaAtiva
             ? {
@@ -74,7 +77,7 @@ export default function Home() {
           partido: candidaturaAtiva?.partido || 'S/P',
           cargo: candidaturaAtiva?.cargo || 'Não informado',
           matches_count: perfil.matches_count || 0,
-        } as Candidato;
+        };
       });
 
       const shuffled = [...mappedData].sort(() => Math.random() - 0.5);

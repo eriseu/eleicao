@@ -155,8 +155,6 @@ export default function Ranking() {
   });
 
   return (
-    <>
-      <Navbar />
       <main className="min-h-screen bg-slate-950 text-slate-100 pb-28">
         <div className="mx-auto max-w-3xl px-4 py-6">
           <header className="text-center mb-6">
@@ -271,6 +269,5 @@ export default function Ranking() {
           </div>
         </div>
       </main>
-    </>
   );
 }

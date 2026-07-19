@@ -19,6 +19,14 @@ export interface Candidato {
   elo_score: number;
   matches_count: number;
   created_at: string;
+  nome_urna?: string;
+  partido?: string;
+  cargo?: string;
+  uf?: string;
+  municipio?: string;
+  foto?: string | null;
+  ano?: number;
+  sg_partido?: string;
   // Relacionamento com a candidatura mais recente trazida pelo backend
   ultima_candidatura?: Candidatura | null;
 }

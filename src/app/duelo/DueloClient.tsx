@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Navbar from '@/components/layout/Navbar';
-import Link from 'next/link';
 
 export default function DueloClient() {
   const searchParams = useSearchParams();
@@ -117,6 +116,26 @@ export default function DueloClient() {
       setC2(filteredCandidates[1]);
     }
   }, [filteredCandidates, searchParams]);
+
+  const candidateOptions2 = useMemo(
+    () => filteredCandidates.filter((candidate) => candidate.id !== c1?.id),
+    [filteredCandidates, c1]
+  );
+
+  const availableCandidatesCount = filteredCandidates.length;
+  const canClearFilters = selectedUf !== 'BR' || selectedMunicipio !== '';
+
+  const resetFilters = () => {
+    setSelectedUf('BR');
+    setSelectedMunicipio('');
+  };
+
+  const randomizeMatch = () => {
+    if (filteredCandidates.length < 2) return;
+    const shuffled = [...filteredCandidates].sort(() => Math.random() - 0.5);
+    setC1(shuffled[0]);
+    setC2(shuffled.find((candidate) => candidate.id !== shuffled[0].id) || null);
+  };
 
   useEffect(() => {
     if (filteredCandidates.length === 0) {
@@ -230,8 +249,6 @@ export default function DueloClient() {
   };
 
   return (
-    <>
-      <Navbar />
       <main className="min-h-screen bg-slate-950 text-slate-100 pb-32">
         <div className="mx-auto max-w-3xl px-4 py-6">
           <header className="text-center mb-6">
@@ -273,12 +290,31 @@ export default function DueloClient() {
                 </select>
               </label>
 
-              <div className="flex items-end rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3">
+              <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Escopo atual</p>
                   <p className="mt-2 text-sm text-white">
                     {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
                   </p>
+                  <p className="mt-2 text-sm text-slate-300">{availableCandidatesCount} candidato{availableCandidatesCount === 1 ? '' : 's'} disponível{availableCandidatesCount === 1 ? '' : 's'}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    disabled={!canClearFilters}
+                    className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Limpar filtros
+                  </button>
+                  <button
+                    type="button"
+                    onClick={randomizeMatch}
+                    disabled={availableCandidatesCount < 2}
+                    className="inline-flex items-center justify-center rounded-2xl border border-emerald-500 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Aleatório
+                  </button>
                 </div>
               </div>
             </div>
@@ -308,14 +344,18 @@ export default function DueloClient() {
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={c2?.id || ''}
                 onChange={(event) => {
-                  const next = filteredCandidates.find((candidate) => candidate.id === event.target.value) || null;
+                  const next = candidateOptions2.find((candidate) => candidate.id === event.target.value) || null;
                   setC2(next);
                 }}
               >
                 <option value="">Selecione o candidato 2</option>
-                {filteredCandidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>{getCandidateLabel(candidate)}</option>
-                ))}
+                {candidateOptions2.length > 0 ? (
+                  candidateOptions2.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>{getCandidateLabel(candidate)}</option>
+                  ))
+                ) : (
+                  <option value="" disabled>Sem opção disponível</option>
+                )}
               </select>
             </label>
           </section>
@@ -381,6 +421,5 @@ export default function DueloClient() {
           </button>
         </div>
       </main>
-    </>
   );
 }

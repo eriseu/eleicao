@@ -117,13 +117,10 @@ export default function Home() {
   };
 
   return (
-    <>
-      <Navbar />
-
       <main className="mx-auto flex min-h-screen max-w-md flex-col justify-between px-4 py-6">
         <header className="text-center">
           <h1 className="text-2xl font-black tracking-tight text-slate-800">
-            DUELO POLÍTICO
+            DU<b>ELO</b> POLÍTICO
           </h1>
           <p className="text-xs text-slate-500">Vote no candidato ideal</p>
         </header>
@@ -156,14 +153,6 @@ export default function Home() {
             })}
           </div>
         )}
-
-        <div className="mt-4 flex justify-around text-xs font-semibold text-blue-600">
-          <Link href="/duelo">Duelo Sugerido ⚔️</Link>
-          <Link href="/ranking">Ver Ranking 🏆</Link>
-        </div>
-
-        <AdBanner slot="0987654321" />
       </main>
-    </>
   );
 }

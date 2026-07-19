@@ -76,8 +76,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   if (!candidato) return <p className="text-center mt-12 text-red-500">Candidato não encontrado.</p>;
 
   return (
-      <>
-      <Navbar />
     <main className="max-w-md mx-auto px-4 py-6">
       <div className="bg-white rounded-3xl border shadow-sm p-6 flex flex-col items-center">
         
@@ -158,6 +156,5 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         </Link>
       </div>
     </main>
-      </>
   );
 }

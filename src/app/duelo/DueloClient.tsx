@@ -1,15 +1,22 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
 export default function DueloClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const sharedUf = searchParams.get('uf');
+  const sharedC1Id = searchParams.get('c1');
+  const sharedC2Id = searchParams.get('c2');
+  const isSharedDuel = Boolean(sharedC1Id && sharedC2Id);
+  const hasValidSharedUf = Boolean(
+    sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf)
+  );
   const [candidates, setCandidates] = useState<Candidato[]>([]);
   const [c1, setC1] = useState<Candidato | null>(null);
   const [c2, setC2] = useState<Candidato | null>(null);
@@ -22,10 +29,7 @@ export default function DueloClient() {
 
   useEffect(() => {
     async function loadData() {
-      const yearRequests = ACTIVE_ELECTION_YEARS.map((ano) =>
-        supabase
-          .from('candidaturas')
-          .select(`
+      const candidateSelection = `
             foto,
             nome_urna,
             partido,
@@ -43,44 +47,23 @@ export default function DueloClient() {
               elo_score,
               matches_count
             )
-          `)
-          .eq('ano_eleicao', ano)
-          .eq('uf', selectedUf)
-          .limit(1000)
-      );
-      const sharedCandidateIds = [searchParams.get('c1'), searchParams.get('c2')].filter(
-        (id): id is string => Boolean(id)
-      );
-      const requests = [...yearRequests];
-
-      if (sharedCandidateIds.length > 0) {
-        requests.push(
-          supabase
+          `;
+      const sharedRequest = supabase
             .from('candidaturas')
-            .select(`
-              foto,
-              nome_urna,
-              partido,
-              cargo,
-              ano_eleicao,
-              uf,
-              municipio,
-              sq_candidato,
-              perfis_candidatos!perfil_id (
-                id,
-                nome_completo,
-                cpf,
-                titulo_eleitoral,
-                created_at,
-                elo_score,
-                matches_count
-              )
-            `)
+            .select(candidateSelection)
             .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-            .eq('uf', selectedUf)
-            .in('perfil_id', sharedCandidateIds)
-        );
-      }
+            .in('perfil_id', [sharedC1Id!, sharedC2Id!])
+            .order('ano_eleicao', { ascending: false });
+      const requests = isSharedDuel
+        ? [hasValidSharedUf ? sharedRequest.eq('uf', sharedUf!) : sharedRequest]
+        : ACTIVE_ELECTION_YEARS.map((ano) =>
+            supabase
+              .from('candidaturas')
+              .select(candidateSelection)
+              .eq('ano_eleicao', ano)
+              .eq('uf', selectedUf)
+              .limit(1000)
+          );
 
       const results = await Promise.all(requests);
 
@@ -129,10 +112,13 @@ export default function DueloClient() {
       });
 
       setCandidates(mappedData);
+      if (isSharedDuel && !hasValidSharedUf && mappedData[0]?.uf) {
+        setSelectedUf(mappedData[0].uf);
+      }
     }
 
     loadData();
-  }, [selectedUf, searchParams]);
+  }, [hasValidSharedUf, isSharedDuel, selectedUf, sharedC1Id, sharedC2Id, sharedUf]);
 
   const municipioOptions = useMemo(() => {
     if (selectedUf === 'BR') return [];
@@ -147,12 +133,14 @@ export default function DueloClient() {
   }, [candidates, selectedUf]);
 
   const filteredCandidates = useMemo(() => {
+    if (isSharedDuel) return candidates;
+
     return candidates.filter((candidate) => {
       if (candidate.uf !== selectedUf) return false;
       if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
       return true;
     });
-  }, [candidates, selectedUf, selectedMunicipio]);
+  }, [candidates, isSharedDuel, selectedUf, selectedMunicipio]);
 
   const getCandidateLabel = (candidate: Candidato) => {
     const nome = candidate.ultima_candidatura?.nome_urna || candidate.nome_urna || candidate.nome_completo;
@@ -161,23 +149,20 @@ export default function DueloClient() {
   };
 
   useEffect(() => {
-    const param1 = searchParams.get('c1');
-    const param2 = searchParams.get('c2');
-
-    if (param1) {
-      const encontrado1 = filteredCandidates.find((c) => c.id === param1);
+    if (sharedC1Id) {
+      const encontrado1 = filteredCandidates.find((c) => c.id === sharedC1Id);
       if (encontrado1) setC1(encontrado1);
     }
-    if (param2) {
-      const encontrado2 = filteredCandidates.find((c) => c.id === param2);
+    if (sharedC2Id) {
+      const encontrado2 = filteredCandidates.find((c) => c.id === sharedC2Id);
       if (encontrado2) setC2(encontrado2);
     }
 
-    if (!param1 && !param2 && filteredCandidates.length >= 2) {
+    if (!isSharedDuel && filteredCandidates.length >= 2) {
       setC1(filteredCandidates[0]);
       setC2(filteredCandidates[1]);
     }
-  }, [filteredCandidates, searchParams]);
+  }, [filteredCandidates, isSharedDuel, sharedC1Id, sharedC2Id]);
 
   const candidateOptions2 = useMemo(
     () => filteredCandidates.filter((candidate) => candidate.id !== c1?.id),
@@ -200,6 +185,8 @@ export default function DueloClient() {
   };
 
   useEffect(() => {
+    if (isSharedDuel) return;
+
     if (filteredCandidates.length === 0) {
       setC1(null);
       setC2(null);
@@ -226,7 +213,7 @@ export default function DueloClient() {
     ) {
       setC2(nextCandidate);
     }
-  }, [filteredCandidates, c1, c2]);
+  }, [filteredCandidates, c1, c2, isSharedDuel]);
 
   const displayedCandidates = useMemo(() => {
     const selected = [c1, c2].filter(Boolean) as Candidato[];
@@ -261,22 +248,15 @@ export default function DueloClient() {
       const result = await response.json();
 
       if (!response.ok) {
+        if (response.status === 409) {
+          router.replace('/ranking');
+          return;
+        }
         setFeedback(result.error || 'Não foi possível concluir a comparação.');
         return;
       }
 
-      const alternatives = filteredCandidates.filter(
-        (candidate) => candidate.id !== c1?.id && candidate.id !== c2?.id
-      );
-
-      if (alternatives.length >= 2) {
-        const shuffled = [...alternatives].sort(() => Math.random() - 0.5);
-        setC1(shuffled[0]);
-        setC2(shuffled[1]);
-        setFeedback('Comparação concluída. Um novo duelo foi preparado.');
-      } else {
-        setFeedback('Comparação concluída nesta sessão.');
-      }
+      router.replace('/ranking');
     } catch (error) {
       console.error('Erro ao registrar escolha:', error);
       setFeedback('Não foi possível concluir a comparação.');
@@ -311,6 +291,7 @@ export default function DueloClient() {
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedUf}
+                  disabled={isSharedDuel}
                   onChange={(event) => {
                     setSelectedUf(event.target.value);
                     setSelectedMunicipio('');
@@ -328,7 +309,7 @@ export default function DueloClient() {
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedMunicipio}
                   onChange={(event) => setSelectedMunicipio(event.target.value)}
-                  disabled={selectedUf === 'BR'}
+                  disabled={isSharedDuel || selectedUf === 'BR'}
                 >
                   <option value="">Todos</option>
                   {municipioOptions.map((municipio) => (
@@ -349,7 +330,7 @@ export default function DueloClient() {
                   <button
                     type="button"
                     onClick={resetFilters}
-                    disabled={!canClearFilters}
+                    disabled={isSharedDuel || !canClearFilters}
                     className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Limpar filtros
@@ -357,7 +338,7 @@ export default function DueloClient() {
                   <button
                     type="button"
                     onClick={randomizeMatch}
-                    disabled={availableCandidatesCount < 2}
+                    disabled={isSharedDuel || availableCandidatesCount < 2}
                     className="inline-flex items-center justify-center rounded-2xl border border-emerald-500 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Aleatório
@@ -373,6 +354,7 @@ export default function DueloClient() {
               <select
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={c1?.id || ''}
+                disabled={isSharedDuel}
                 onChange={(event) => {
                   const next = filteredCandidates.find((candidate) => candidate.id === event.target.value) || null;
                   setC1(next);
@@ -390,6 +372,7 @@ export default function DueloClient() {
               <select
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={c2?.id || ''}
+                disabled={isSharedDuel}
                 onChange={(event) => {
                   const next = candidateOptions2.find((candidate) => candidate.id === event.target.value) || null;
                   setC2(next);

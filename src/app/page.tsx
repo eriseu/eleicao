@@ -240,7 +240,7 @@ export default function Home() {
       )}
 
       {!loading && par && (
-        <div className="mx-auto my-auto grid w-full max-w-sm grid-cols-2 gap-4">
+        <div className="mx-auto mt-2 grid w-full max-w-sm grid-cols-2 gap-4">
           {par.map((candidato, index) => {
             const outroCandidato = index === 0 ? par[1] : par[0];
 

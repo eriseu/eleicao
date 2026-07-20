@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
-import Navbar from '@/components/layout/Navbar';
+import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
 export default function DueloClient() {
   const searchParams = useSearchParams();
@@ -17,11 +17,11 @@ export default function DueloClient() {
 
   useEffect(() => {
     async function loadData() {
-      const { data } = await supabase
-        .from('perfis_candidatos')
-        .select(`
-          *,
-          candidaturas!perfil_id (
+      const results = await Promise.all(
+        ACTIVE_ELECTION_YEARS.map((ano) =>
+          supabase
+            .from('candidaturas')
+            .select(`
             foto,
             nome_urna,
             partido,
@@ -29,48 +29,72 @@ export default function DueloClient() {
             ano_eleicao,
             uf,
             municipio,
-            sq_candidato
-          )
-        `)
-        .limit(250);
+            sq_candidato,
+            perfis_candidatos!perfil_id (
+              id,
+              nome_completo,
+              cpf,
+              titulo_eleitoral,
+              created_at,
+              elo_score,
+              matches_count
+            )
+          `)
+            .eq('ano_eleicao', ano)
+            .eq('uf', selectedUf)
+            .limit(1000)
+        )
+      );
 
-      if (!data) return;
+      const failedResult = results.find(({ error }) => error);
 
-      const mappedData = data.map((perfil: any) => {
-        const listaCandidaturas = Array.isArray(perfil.candidaturas) ? perfil.candidaturas : [];
-        const candidaturaAtiva = listaCandidaturas.find((c: any) => c.ano_eleicao === 2024) || listaCandidaturas[0];
+      if (failedResult?.error) {
+        console.error('Erro ao buscar candidatos para o duelo:', failedResult.error.message);
+        setCandidates([]);
+        return;
+      }
 
-        return {
+      const data = results.flatMap((result) => result.data || []);
+
+      const perfisIncluidos = new Set<string>();
+      const mappedData = data.flatMap((candidaturaAtiva) => {
+        const perfil = Array.isArray(candidaturaAtiva.perfis_candidatos)
+          ? candidaturaAtiva.perfis_candidatos[0]
+          : candidaturaAtiva.perfis_candidatos;
+        if (!perfil || perfisIncluidos.has(perfil.id)) return [];
+        perfisIncluidos.add(perfil.id);
+
+        return [{
           id: perfil.id,
           nome_completo: perfil.nome_completo,
+          cpf: perfil.cpf,
+          titulo_eleitoral: perfil.titulo_eleitoral,
+          created_at: perfil.created_at,
           elo_score: perfil.elo_score || 0,
           matches_count: perfil.matches_count || 0,
           nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
           partido: candidaturaAtiva?.partido || 'S/P',
           cargo: candidaturaAtiva?.cargo || 'Não informado',
-          uf: candidaturaAtiva?.uf || perfil.uf || 'BR',
-          municipio: candidaturaAtiva?.municipio || perfil.municipio || 'Não informado',
+          uf: candidaturaAtiva.uf || 'BR',
+          municipio: candidaturaAtiva.municipio || 'Não informado',
           ultima_candidatura: candidaturaAtiva
             ? {
                 ...candidaturaAtiva,
-                uf: candidaturaAtiva.uf || perfil.uf || 'BR',
-                municipio: candidaturaAtiva.municipio || perfil.municipio || 'Não informado',
+                perfil_id: perfil.id,
+                created_at: perfil.created_at,
+                uf: candidaturaAtiva.uf || 'BR',
+                municipio: candidaturaAtiva.municipio || 'Não informado',
                 sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
               }
             : null,
-        };
+        }];
       });
 
-      setCandidates(mappedData as any);
+      setCandidates(mappedData);
     }
 
     loadData();
-  }, []);
-
-  const ufOptions = useMemo(
-    () => Array.from(new Set(candidates.map((candidate) => candidate.uf).filter(Boolean))).sort(),
-    [candidates]
-  );
+  }, [selectedUf]);
 
   const municipioOptions = useMemo(() => {
     if (selectedUf === 'BR') return [];
@@ -86,7 +110,7 @@ export default function DueloClient() {
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((candidate) => {
-      if (selectedUf !== 'BR' && candidate.uf !== selectedUf) return false;
+      if (candidate.uf !== selectedUf) return false;
       if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
       return true;
     });
@@ -183,12 +207,6 @@ export default function DueloClient() {
     return chosen;
   }, [filteredCandidates, c1, c2]);
 
-  useEffect(() => {
-    if (selectedUf === 'BR') {
-      setSelectedMunicipio('');
-    }
-  }, [selectedUf]);
-
   const votar = async (vencedor: Candidato, perdedor: Candidato) => {
     const K = 32;
     const Ra = vencedor.elo_score;
@@ -266,10 +284,12 @@ export default function DueloClient() {
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedUf}
-                  onChange={(event) => setSelectedUf(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedUf(event.target.value);
+                    setSelectedMunicipio('');
+                  }}
                 >
-                  <option value="BR">Brasil</option>
-                  {ufOptions.map((uf) => (
+                  {AVAILABLE_UFS.map((uf) => (
                     <option key={uf} value={uf}>{uf}</option>
                   ))}
                 </select>

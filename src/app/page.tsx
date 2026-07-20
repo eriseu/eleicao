@@ -3,11 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdBanner from '@/components/ui/AdBanner';
 import CandidateImage from '@/components/ui/CandidateImage';
+import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
 import type { Candidato } from '@/types';
-
-// Altere somente este valor quando quiser usar outra eleição.
-const ANO_ELEICAO_ATIVO = 2024;
 
 export default function Home() {
   const [par, setPar] = useState<[Candidato, Candidato] | null>(null);
@@ -20,11 +18,11 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from('perfis_candidatos')
-        .select(`
-          *,
-          candidaturas!perfil_id (
+      const results = await Promise.all(
+        ACTIVE_ELECTION_YEARS.map((ano) =>
+          supabase
+            .from('candidaturas')
+            .select(`
             foto,
             nome_urna,
             partido,
@@ -32,17 +30,31 @@ export default function Home() {
             ano_eleicao,
             uf,
             municipio,
-            sq_candidato
-          )
-        `)
-        .eq('candidaturas.ano_eleicao', ANO_ELEICAO_ATIVO)
-        .not('candidaturas', 'is', null)
-        .limit(250);
+            sq_candidato,
+            perfis_candidatos!perfil_id (
+              id,
+              nome_completo,
+              cpf,
+              titulo_eleitoral,
+              created_at,
+              elo_score,
+              matches_count
+            )
+          `)
+            .eq('ano_eleicao', ano)
+            .eq('uf', selectedUf)
+            .limit(1000)
+        )
+      );
 
-      if (error) {
-        console.error('Erro ao buscar matchup:', error.message);
+      const failedResult = results.find(({ error }) => error);
+
+      if (failedResult?.error) {
+        console.error('Erro ao buscar matchup:', failedResult.error.message);
         return;
       }
+
+      const data = results.flatMap((result) => result.data || []);
 
       if (!data || data.length < 1) {
         setCandidates([]);
@@ -50,14 +62,15 @@ export default function Home() {
         return;
       }
 
-      const mappedData: Candidato[] = data.map((perfil) => {
-        const listaCandidaturas = Array.isArray(perfil.candidaturas)
-          ? perfil.candidaturas
-          : [];
+      const perfisIncluidos = new Set<string>();
+      const mappedData: Candidato[] = data.flatMap((candidaturaAtiva) => {
+        const perfil = Array.isArray(candidaturaAtiva.perfis_candidatos)
+          ? candidaturaAtiva.perfis_candidatos[0]
+          : candidaturaAtiva.perfis_candidatos;
+        if (!perfil || perfisIncluidos.has(perfil.id)) return [];
+        perfisIncluidos.add(perfil.id);
 
-        const candidaturaAtiva = listaCandidaturas[0];
-
-        return {
+        return [{
           id: perfil.id,
           nome_completo: perfil.nome_completo,
           cpf: perfil.cpf,
@@ -67,21 +80,20 @@ export default function Home() {
           ultima_candidatura: candidaturaAtiva
             ? {
                 ...candidaturaAtiva,
-                ano_eleicao: candidaturaAtiva.ano_eleicao || perfil.ano,
-                uf: candidaturaAtiva.uf || perfil.uf,
-                municipio: candidaturaAtiva.municipio || perfil.municipio,
+                perfil_id: perfil.id,
+                created_at: perfil.created_at,
                 sq_candidato:
                   candidaturaAtiva.sq_candidato ||
                   candidaturaAtiva.foto
                     ?.replace(/_div\.(jpg|jpeg|png)/g, '')
                     .replace(/[A-Z]/g, ''),
-              }
+            }
             : null,
           nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
           partido: candidaturaAtiva?.partido || 'S/P',
           cargo: candidaturaAtiva?.cargo || 'Não informado',
           matches_count: perfil.matches_count || 0,
-        };
+        }];
       });
 
       setCandidates(mappedData);
@@ -91,18 +103,6 @@ export default function Home() {
       setLoading(false);
     }
   };
-
-  const ufs = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          candidates
-            .map((candidate) => candidate.ultima_candidatura?.uf || candidate.uf || 'BR')
-            .filter(Boolean)
-        )
-      ).sort(),
-    [candidates]
-  );
 
   const municipios = useMemo(() => {
     if (selectedUf === 'BR') return [];
@@ -121,7 +121,7 @@ export default function Home() {
       const candidateUf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
       const candidateMunicipio = candidate.ultima_candidatura?.municipio || candidate.municipio || '';
 
-      if (selectedUf !== 'BR' && candidateUf !== selectedUf) return false;
+      if (candidateUf !== selectedUf) return false;
       if (selectedMunicipio && candidateMunicipio !== selectedMunicipio) return false;
       return true;
     });
@@ -137,7 +137,7 @@ export default function Home() {
 
   useEffect(() => {
     void fetchCandidates();
-  }, []);
+  }, [selectedUf]);
 
   useEffect(() => {
     if (loading) return;
@@ -183,10 +183,12 @@ export default function Home() {
             <select
               className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-500"
               value={selectedUf}
-              onChange={(event) => setSelectedUf(event.target.value)}
+              onChange={(event) => {
+                setSelectedUf(event.target.value);
+                setSelectedMunicipio('');
+              }}
             >
-              <option value="BR">Todos os Estados</option>
-              {ufs.map((uf) => (
+              {AVAILABLE_UFS.map((uf) => (
                 <option key={uf} value={uf}>{uf}</option>
               ))}
             </select>

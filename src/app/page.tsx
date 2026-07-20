@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import AdBanner from '@/components/ui/AdBanner';
 import CandidateImage from '@/components/ui/CandidateImage';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
@@ -13,6 +12,8 @@ export default function Home() {
   const [selectedUf, setSelectedUf] = useState('BR');
   const [selectedMunicipio, setSelectedMunicipio] = useState('');
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   const fetchCandidates = async () => {
     setLoading(true);
@@ -150,38 +151,62 @@ export default function Home() {
     if (pair) setPar(pair);
   }, [filteredCandidates, loading]);
 
-  const votar = async (vencedor: Candidato, perdedor: Candidato) => {
-    try {
-      const { error } = await supabase.rpc('registrar_voto_seguro', {
-        vencedor_id: vencedor.id,
-        perdedor_id: perdedor.id,
-      });
+  const escolher = async (escolhido: Candidato, outro: Candidato) => {
+    if (submitting) return;
+    setSubmitting(true);
+    setFeedback('');
 
-      if (error) {
-        console.error('Erro ao computar voto:', error.message);
+    try {
+      const response = await fetch('/api/duelo/votar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vencedorId: escolhido.id,
+          perdedorId: outro.id,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        setFeedback(result.error || 'Não foi possível concluir a comparação.');
+        return;
       }
+
+      const alternatives = filteredCandidates.filter(
+        (candidate) => candidate.id !== escolhido.id && candidate.id !== outro.id
+      );
+      const nextPair = pickRandomPair(alternatives);
+      setPar(nextPair);
+      setFeedback(
+        nextPair
+          ? 'Comparação concluída. Um novo duelo foi preparado.'
+          : 'Comparação concluída nesta sessão.'
+      );
     } catch (error) {
-      console.error('Erro geral na requisição:', error);
+      console.error('Erro ao registrar escolha:', error);
+      setFeedback('Não foi possível concluir a comparação.');
     } finally {
-      await fetchCandidates();
+      setSubmitting(false);
     }
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-between px-4 py-6">
+    <main className="min-h-screen bg-slate-950 pb-28 text-slate-100">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-6">
       <header className="text-center">
-        <h1 className="text-2xl font-black tracking-tight text-slate-800">
+        <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Duelo Político</p>
+        <h1 className="mt-2 text-3xl font-black tracking-tight text-white">
           DU<b>ELO</b> POLÍTICO
         </h1>
-        <p className="text-xs text-slate-500">Filtre por estado ou município e vote nas duas imagens.</p>
+        <p className="mt-3 text-sm text-slate-400">Filtre por estado ou município e toque na foto da sua escolha.</p>
       </header>
 
-      <section className="mb-6 rounded-[28px] border border-slate-200/50 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+      <section className="my-6 rounded-[28px] border border-white/10 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/30 backdrop-blur-sm">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
-            <span className="mb-2 block text-[11px] uppercase tracking-[0.3em] text-slate-500">Estado</span>
+            <span className="mb-2 block text-[11px] uppercase tracking-[0.3em] text-slate-400">Estado</span>
             <select
-              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-500"
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500"
               value={selectedUf}
               onChange={(event) => {
                 setSelectedUf(event.target.value);
@@ -194,9 +219,9 @@ export default function Home() {
             </select>
           </label>
           <label className="block">
-            <span className="mb-2 block text-[11px] uppercase tracking-[0.3em] text-slate-500">Município</span>
+            <span className="mb-2 block text-[11px] uppercase tracking-[0.3em] text-slate-400">Município</span>
             <select
-              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-500"
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               value={selectedMunicipio}
               onChange={(event) => setSelectedMunicipio(event.target.value)}
               disabled={selectedUf === 'BR'}
@@ -211,7 +236,7 @@ export default function Home() {
       </section>
 
       {loading && (
-        <p className="text-center text-slate-500">Carregando duelo...</p>
+        <p className="my-auto text-center text-slate-400">Carregando duelo...</p>
       )}
 
       {!loading && par && (
@@ -223,17 +248,16 @@ export default function Home() {
               <button
                 key={candidato.id}
                 type="button"
-                onClick={() => void votar(candidato, outroCandidato)}
-                className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-md transition duration-100 hover:shadow-lg focus:outline-none active:scale-95"
+                onClick={() => void escolher(candidato, outroCandidato)}
+                disabled={submitting}
+                aria-label={`Escolher ${candidato.nome_urna || candidato.nome_completo}`}
+                className="relative aspect-[3/4] w-full overflow-hidden rounded-[28px] border border-white/10 bg-slate-800 shadow-xl transition duration-100 hover:-translate-y-1 hover:border-emerald-500/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 disabled:cursor-wait disabled:opacity-60"
               >
                 <CandidateImage
                   candidato={candidato}
                   alt={candidato.nome_completo}
                   className="h-full w-full object-cover"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 to-transparent px-2 py-2">
-                  <p className="truncate text-xs font-semibold text-white">{candidato.nome_urna}</p>
-                </div>
               </button>
             );
           })}
@@ -241,8 +265,10 @@ export default function Home() {
       )}
 
       {!loading && !par && (
-        <p className="text-center text-slate-500">Nenhum duelo disponível para este filtro.</p>
+        <p className="my-auto text-center text-slate-400">Nenhum duelo disponível para este filtro.</p>
       )}
+      {feedback && <p className="mt-6 text-center text-sm text-emerald-300">{feedback}</p>}
+      </div>
     </main>
   );
 }

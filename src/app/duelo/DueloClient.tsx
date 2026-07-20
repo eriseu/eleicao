@@ -9,19 +9,23 @@ import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
 export default function DueloClient() {
   const searchParams = useSearchParams();
+  const sharedUf = searchParams.get('uf');
   const [candidates, setCandidates] = useState<Candidato[]>([]);
   const [c1, setC1] = useState<Candidato | null>(null);
   const [c2, setC2] = useState<Candidato | null>(null);
-  const [selectedUf, setSelectedUf] = useState('BR');
+  const [selectedUf, setSelectedUf] = useState(
+    sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf) ? sharedUf : 'BR'
+  );
   const [selectedMunicipio, setSelectedMunicipio] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
     async function loadData() {
-      const results = await Promise.all(
-        ACTIVE_ELECTION_YEARS.map((ano) =>
-          supabase
-            .from('candidaturas')
-            .select(`
+      const yearRequests = ACTIVE_ELECTION_YEARS.map((ano) =>
+        supabase
+          .from('candidaturas')
+          .select(`
             foto,
             nome_urna,
             partido,
@@ -40,11 +44,45 @@ export default function DueloClient() {
               matches_count
             )
           `)
-            .eq('ano_eleicao', ano)
-            .eq('uf', selectedUf)
-            .limit(1000)
-        )
+          .eq('ano_eleicao', ano)
+          .eq('uf', selectedUf)
+          .limit(1000)
       );
+      const sharedCandidateIds = [searchParams.get('c1'), searchParams.get('c2')].filter(
+        (id): id is string => Boolean(id)
+      );
+      const requests = [...yearRequests];
+
+      if (sharedCandidateIds.length > 0) {
+        requests.push(
+          supabase
+            .from('candidaturas')
+            .select(`
+              foto,
+              nome_urna,
+              partido,
+              cargo,
+              ano_eleicao,
+              uf,
+              municipio,
+              sq_candidato,
+              perfis_candidatos!perfil_id (
+                id,
+                nome_completo,
+                cpf,
+                titulo_eleitoral,
+                created_at,
+                elo_score,
+                matches_count
+              )
+            `)
+            .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+            .eq('uf', selectedUf)
+            .in('perfil_id', sharedCandidateIds)
+        );
+      }
+
+      const results = await Promise.all(requests);
 
       const failedResult = results.find(({ error }) => error);
 
@@ -94,7 +132,7 @@ export default function DueloClient() {
     }
 
     loadData();
-  }, [selectedUf]);
+  }, [selectedUf, searchParams]);
 
   const municipioOptions = useMemo(() => {
     if (selectedUf === 'BR') return [];
@@ -207,61 +245,50 @@ export default function DueloClient() {
     return chosen;
   }, [filteredCandidates, c1, c2]);
 
-  const votar = async (vencedor: Candidato, perdedor: Candidato) => {
-    const K = 32;
-    const Ra = vencedor.elo_score;
-    const Rb = perdedor.elo_score;
-
-    const Ea = 1 / (1 + Math.pow(10, (Rb - Ra) / 400));
-    const Eb = 1 / (1 + Math.pow(10, (Ra - Rb) / 400));
-
-    const novoEloA = Math.round(Ra + K * (1 - Ea));
-    const novoEloB = Math.round(Rb + K * (0 - Eb));
-
-    const vencedorAtualizado = {
-      ...vencedor,
-      elo_score: novoEloA,
-      matches_count: (vencedor.matches_count || 0) + 1,
-    };
-    const perdedorAtualizado = {
-      ...perdedor,
-      elo_score: novoEloB,
-      matches_count: (perdedor.matches_count || 0) + 1,
-    };
-
-    if (c1?.id === vencedor.id) {
-      setC1(vencedorAtualizado);
-      setC2(perdedorAtualizado);
-    } else {
-      setC1(perdedorAtualizado);
-      setC2(vencedorAtualizado);
-    }
-
+  const escolher = async (escolhido: Candidato, outro: Candidato) => {
+    if (submitting) return;
+    setSubmitting(true);
+    setFeedback('');
     try {
-      await supabase
-        .from('perfis_candidatos')
-        .update({ elo_score: novoEloA, matches_count: vencedorAtualizado.matches_count })
-        .eq('id', vencedor.id);
-
-      await supabase
-        .from('perfis_candidatos')
-        .update({ elo_score: novoEloB, matches_count: perdedorAtualizado.matches_count })
-        .eq('id', perdedor.id);
-
-      await supabase.rpc('registrar_voto', {
-        vencedor_id: vencedor.id,
-        perdedor_id: perdedor.id,
+      const response = await fetch('/api/duelo/votar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vencedorId: escolhido.id,
+          perdedorId: outro.id,
+        }),
       });
+      const result = await response.json();
 
-      alert(`Voto computado! ${vencedor.ultima_candidatura?.nome_urna} derrotou ${perdedor.ultima_candidatura?.nome_urna}.`);
-    } catch (err) {
-      console.error('Erro ao registrar voto:', err);
+      if (!response.ok) {
+        setFeedback(result.error || 'Não foi possível concluir a comparação.');
+        return;
+      }
+
+      const alternatives = filteredCandidates.filter(
+        (candidate) => candidate.id !== c1?.id && candidate.id !== c2?.id
+      );
+
+      if (alternatives.length >= 2) {
+        const shuffled = [...alternatives].sort(() => Math.random() - 0.5);
+        setC1(shuffled[0]);
+        setC2(shuffled[1]);
+        setFeedback('Comparação concluída. Um novo duelo foi preparado.');
+      } else {
+        setFeedback('Comparação concluída nesta sessão.');
+      }
+    } catch (error) {
+      console.error('Erro ao registrar escolha:', error);
+      setFeedback('Não foi possível concluir a comparação.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleShare = () => {
     if (!c1 || !c2) return;
-    const shareUrl = `${window.location.origin}/duelo?c1=${c1.id}&c2=${c2.id}`;
+    const params = new URLSearchParams({ uf: selectedUf, c1: c1.id, c2: c2.id });
+    const shareUrl = `${window.location.origin}/duelo?${params.toString()}`;
     navigator.clipboard.writeText(shareUrl);
     alert('Link copiado para compartilhar seu duelo!');
   };
@@ -273,7 +300,7 @@ export default function DueloClient() {
             <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Duelo Político</p>
             <h1 className="mt-2 text-3xl font-black text-white">Quem representa melhor suas escolhas?</h1>
             <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-400">
-              Filtre por Brasil, estado ou município e escolha entre dois candidatos com visual moderno e ações embaixo.
+              Filtre por Brasil, estado ou município e toque na foto da sua escolha.
             </p>
           </header>
 
@@ -381,16 +408,21 @@ export default function DueloClient() {
           </section>
 
           <section className="grid gap-4 sm:grid-cols-2">
-            {displayedCandidates.slice(0, 2).map((candidate) => (
+            {displayedCandidates.slice(0, 2).map((candidate, index) => {
+              const otherCandidate = displayedCandidates[index === 0 ? 1 : 0];
+              return (
               <div key={candidate.id} className="rounded-[32px] border border-white/10 bg-slate-900/80 shadow-xl shadow-slate-950/30 transition hover:-translate-y-1">
-                <div className="relative overflow-hidden rounded-t-[32px] bg-slate-800">
+                <button
+                  type="button"
+                  className="relative block w-full overflow-hidden rounded-t-[32px] bg-slate-800 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                  onClick={() => otherCandidate && void escolher(candidate, otherCandidate)}
+                  disabled={submitting || !otherCandidate}
+                  aria-label={`Escolher ${candidate.nome_urna || candidate.nome_completo}`}
+                >
                   <CandidateImage candidato={candidate} alt={candidate.nome_completo} className="h-80 w-full object-cover" />
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 py-3">
-                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{candidate.nome_urna}</p>
-                    <p className="text-xs text-slate-400">{candidate.cargo} · {candidate.partido}</p>
-                  </div>
-                </div>
+                </button>
                 <div className="space-y-3 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300">{candidate.cargo} · {candidate.partido}</p>
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.24em] text-slate-400">UF / Município</p>
@@ -400,36 +432,18 @@ export default function DueloClient() {
                       Elo {candidate.elo_score}
                     </div>
                   </div>
-                  <div className="rounded-3xl bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
-                    Clique no botão abaixo para enviar seu voto para este candidato.
-                  </div>
+                  <p className="rounded-3xl bg-slate-950/70 px-4 py-3 text-sm text-slate-300">Toque na foto para escolher.</p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </section>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => c1 && c2 && votar(c1, c2)}
-              disabled={!c1 || !c2}
-              className="rounded-full bg-emerald-500 px-4 py-4 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Votar em {c1?.nome_urna || 'Candidato 1'}
-            </button>
-            <button
-              type="button"
-              onClick={() => c1 && c2 && votar(c2, c1)}
-              disabled={!c1 || !c2}
-              className="rounded-full bg-slate-200 px-4 py-4 text-sm font-bold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Votar em {c2?.nome_urna || 'Candidato 2'}
-            </button>
-          </div>
+          {feedback && <p className="mt-6 text-center text-sm text-emerald-300">{feedback}</p>}
 
           <div className="mt-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
             <p className="font-semibold text-white">Dica</p>
-            <p className="mt-2">Use os filtros para comparar candidatos do seu estado ou município e clique nos botões abaixo para escolher o vencedor.</p>
+            <p className="mt-2">Use os filtros para comparar candidatos do seu estado ou município e toque diretamente em uma das fotos.</p>
           </div>
 
           <button

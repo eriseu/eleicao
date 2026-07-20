@@ -9,7 +9,7 @@ export function DueloResultado({ votos, aoReiniciar }: DueloResultadoProps) {
       <div className="text-4xl mb-4">🎉</div>
       <h3 className="text-2xl font-bold text-gray-800 dark:text-white">Duelo Concluído!</h3>
       <p className="text-gray-500 dark:text-gray-400 mt-2 mb-6">
-        Você votou em {Object.keys(votos).length} propostas. Seus dados foram salvos!
+        Você escolheu {Object.keys(votos).length} propostas. Seus dados foram salvos!
       </p>
       
       <button

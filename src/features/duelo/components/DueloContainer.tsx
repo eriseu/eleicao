@@ -17,7 +17,7 @@ export function DueloContainer() {
           disabled={votando}
           className="px-4 py-2 bg-white border rounded hover:border-blue-500 transition-all"
         >
-          Votar Opção A
+          Escolher Opção A
         </button>
 
         <button
@@ -25,12 +25,12 @@ export function DueloContainer() {
           disabled={votando}
           className="px-4 py-2 bg-white border rounded hover:border-blue-500 transition-all"
         >
-          Votar Opção B
+          Escolher Opção B
         </button>
       </div>
 
       {dueloVotado !== null && (
-        <p className="mt-4 text-sm text-green-600">Você votou na opção {dueloVotado}.</p>
+        <p className="mt-4 text-sm text-green-600">Você escolheu a opção {dueloVotado}.</p>
       )}
 
       {novosScores && (

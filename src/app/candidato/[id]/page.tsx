@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import CandidateImage from '@/components/ui/CandidateImage';
-import AdBanner from '@/components/ui/AdBanner';
 import Navbar from "@/components/layout/Navbar";
 import Link from 'next/link';
 
@@ -147,8 +146,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         </div>
 
       </div>
-
-      <AdBanner slot="4455667788" />
 
       <div className="text-center mt-6">
         <Link href="/" className="text-sm text-slate-500 underline hover:text-slate-800 transition">

@@ -159,8 +159,12 @@ export default function DueloClient() {
     }
 
     if (!isSharedDuel && filteredCandidates.length >= 2) {
-      setC1(filteredCandidates[0]);
-      setC2(filteredCandidates[1]);
+      const shuffled = [...filteredCandidates].sort(() => Math.random() - 0.5);
+      setC1(shuffled[0]);
+      setC2(shuffled[1]);
+    } else if (!isSharedDuel) {
+      setC1(null);
+      setC2(null);
     }
   }, [filteredCandidates, isSharedDuel, sharedC1Id, sharedC2Id]);
 
@@ -183,37 +187,6 @@ export default function DueloClient() {
     setC1(shuffled[0]);
     setC2(shuffled.find((candidate) => candidate.id !== shuffled[0].id) || null);
   };
-
-  useEffect(() => {
-    if (isSharedDuel) return;
-
-    if (filteredCandidates.length === 0) {
-      setC1(null);
-      setC2(null);
-      return;
-    }
-
-    const firstCandidate = filteredCandidates[0];
-    const currentC1Id = c1?.id || firstCandidate.id;
-    const nextCandidate = filteredCandidates.find((candidate) => candidate.id !== currentC1Id) || null;
-
-    if (!c1 || !filteredCandidates.some((candidate) => candidate.id === c1.id)) {
-      setC1(firstCandidate);
-    }
-
-    if (filteredCandidates.length === 1) {
-      setC2(null);
-      return;
-    }
-
-    if (
-      !c2 ||
-      c2.id === currentC1Id ||
-      !filteredCandidates.some((candidate) => candidate.id === c2.id)
-    ) {
-      setC2(nextCandidate);
-    }
-  }, [filteredCandidates, c1, c2, isSharedDuel]);
 
   const displayedCandidates = useMemo(() => {
     const selected = [c1, c2].filter(Boolean) as Candidato[];
@@ -280,11 +253,13 @@ export default function DueloClient() {
             <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Duelo Político</p>
             <h1 className="mt-2 text-3xl font-black text-white">Quem representa melhor suas escolhas?</h1>
             <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-400">
-              Filtre por Brasil, estado ou município e toque na foto da sua escolha.
+              {isSharedDuel
+                ? 'Toque na foto da sua escolha.'
+                : 'Filtre por Brasil, estado ou município e toque na foto da sua escolha.'}
             </p>
           </header>
 
-          <section className="mb-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-slate-950/30">
+          {!isSharedDuel && <section className="mb-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-slate-950/30">
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block">
                 <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Brasil / UF</span>
@@ -346,9 +321,9 @@ export default function DueloClient() {
                 </div>
               </div>
             </div>
-          </section>
+          </section>}
 
-          <section className="mb-6 grid gap-4 sm:grid-cols-2">
+          {!isSharedDuel && <section className="mb-6 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Candidato 1</span>
               <select
@@ -388,11 +363,26 @@ export default function DueloClient() {
                 )}
               </select>
             </label>
-          </section>
+          </section>}
 
-          <section className="grid gap-4 sm:grid-cols-2">
+          <section className={isSharedDuel ? 'mx-auto grid w-full max-w-sm grid-cols-2 gap-4' : 'grid gap-4 sm:grid-cols-2'}>
             {displayedCandidates.slice(0, 2).map((candidate, index) => {
               const otherCandidate = displayedCandidates[index === 0 ? 1 : 0];
+              if (isSharedDuel) {
+                return (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    className="relative aspect-[3/4] w-full overflow-hidden rounded-[28px] border border-white/10 bg-slate-800 shadow-xl transition hover:-translate-y-1 hover:border-emerald-500/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                    onClick={() => otherCandidate && void escolher(candidate, otherCandidate)}
+                    disabled={submitting || !otherCandidate}
+                    aria-label={`Escolher ${candidate.nome_urna || candidate.nome_completo}`}
+                  >
+                    <CandidateImage candidato={candidate} alt={candidate.nome_completo} className="h-full w-full object-cover" />
+                  </button>
+                );
+              }
+
               return (
               <div key={candidate.id} className="rounded-[32px] border border-white/10 bg-slate-900/80 shadow-xl shadow-slate-950/30 transition hover:-translate-y-1">
                 <button
@@ -424,18 +414,18 @@ export default function DueloClient() {
 
           {feedback && <p className="mt-6 text-center text-sm text-emerald-300">{feedback}</p>}
 
-          <div className="mt-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
+          {!isSharedDuel && <div className="mt-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
             <p className="font-semibold text-white">Dica</p>
             <p className="mt-2">Use os filtros para comparar candidatos do seu estado ou município e toque diretamente em uma das fotos.</p>
-          </div>
+          </div>}
 
-          <button
+          {!isSharedDuel && <button
             type="button"
             onClick={handleShare}
             className="mt-6 w-full rounded-3xl bg-indigo-600 px-5 py-4 text-sm font-semibold text-white shadow-xl shadow-indigo-600/20 transition hover:bg-indigo-500"
           >
             Compartilhar Duelo 🔗
-          </button>
+          </button>}
         </div>
       </main>
   );

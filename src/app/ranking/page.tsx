@@ -1,148 +1,129 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
-import Navbar from '@/components/layout/Navbar';
 import Link from 'next/link';
+import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
 export default function Ranking() {
   const [ranking, setRanking] = useState<Candidato[]>([]);
   const [page, setPage] = useState(0);
-  const [ufs, setUfs] = useState<string[]>([]);
   const [municipios, setMunicipios] = useState<string[]>([]);
-  const [regionMunicipios, setRegionMunicipios] = useState<Record<string, string[]>>({});
   const [selectedUf, setSelectedUf] = useState('BR');
   const [selectedMunicipio, setSelectedMunicipio] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    async function loadRegions() {
-      const { data } = await supabase
-        .from('perfis_candidatos')
-        .select(`
-          candidaturas!perfil_id (
-            uf,
-            municipio
-          )
-        `)
-        .limit(300);
-
-      if (!data) return;
-
-      const candidaturas = data.flatMap((perfil: any) => (Array.isArray(perfil.candidaturas) ? perfil.candidaturas : []));
-      const uniqueUfs = Array.from(
-        new Set(candidaturas.map((c: any) => c.uf).filter(Boolean))
-      ).sort();
-
-      const groupByUf = uniqueUfs.reduce<Record<string, string[]>>((acc, uf) => {
-        acc[uf] = [];
-        return acc;
-      }, {});
-
-      candidaturas.forEach((c: any) => {
-        if (c.uf && c.municipio) {
-          const list = groupByUf[c.uf] || [];
-          if (!list.includes(c.municipio)) {
-            list.push(c.municipio);
-          }
-        }
-      });
-
-      Object.keys(groupByUf).forEach((uf) => {
-        groupByUf[uf].sort();
-      });
-
-      setUfs(uniqueUfs);
-      setRegionMunicipios(groupByUf);
-    }
-
-    loadRegions();
-  }, []);
-
-  useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
       setSelectedMunicipio('');
-    } else {
-      setMunicipios(regionMunicipios[selectedUf] || []);
+      return;
+    }
+
+    async function loadMunicipios() {
+      const { data } = await supabase
+        .from('candidaturas')
+        .select('municipio')
+        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+        .eq('uf', selectedUf)
+        .not('municipio', 'is', null)
+        .limit(1000);
+
+      const uniqueMunicipios = Array.from(
+        new Set((data || []).map((item) => item.municipio).filter(Boolean))
+      ).sort();
+      setMunicipios(uniqueMunicipios);
       setSelectedMunicipio('');
     }
-  }, [selectedUf, regionMunicipios]);
+
+    void loadMunicipios();
+  }, [selectedUf]);
 
   useEffect(() => {
     async function loadRanking() {
       setLoading(true);
-      const from = page * 10;
-      const to = from + 9;
+      const to = (page + 1) * 50 - 1;
 
-      const query = supabase
-        .from('perfis_candidatos')
+      let query = supabase
+        .from('candidaturas')
         .select(`
-          *,
-          candidaturas!perfil_id (
-            foto,
-            nome_urna,
-            partido,
-            cargo,
-            ano_eleicao,
-            uf,
-            municipio,
-            sq_candidato
+          foto,
+          nome_urna,
+          partido,
+          cargo,
+          ano_eleicao,
+          uf,
+          municipio,
+          sq_candidato,
+          perfis_candidatos!perfil_id (
+            id,
+            nome_completo,
+            cpf,
+            titulo_eleitoral,
+            created_at,
+            elo_score,
+            matches_count
           )
         `)
-        .order('elo_score', { ascending: false })
-        .range(from, to);
+        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+        .order('elo_score', { referencedTable: 'perfis_candidatos', ascending: false })
+        .order('ano_eleicao', { ascending: false })
+        .range(0, to);
 
       if (selectedUf !== 'BR') {
-        query.eq('candidaturas.uf', selectedUf);
+        query = query.eq('uf', selectedUf);
       }
       if (selectedMunicipio) {
-        query.eq('candidaturas.municipio', selectedMunicipio);
+        query = query.eq('municipio', selectedMunicipio);
       }
 
-      const { data } = await query;
+      const { data, error } = await query;
 
-      if (!data) return;
+      if (error || !data) {
+        console.error('Erro ao carregar ranking:', error?.message);
+        setRanking([]);
+        setLoading(false);
+        return;
+      }
 
-      const mappedData = data.map((perfil: any) => {
-        const listaCandidaturas = Array.isArray(perfil.candidaturas) ? perfil.candidaturas : [];
-        const candidaturaAtiva = listaCandidaturas.find((c: any) => c.ano_eleicao === 2024) || listaCandidaturas[0];
+      const perfisIncluidos = new Set<string>();
+      const mappedData: Candidato[] = data.flatMap((candidaturaAtiva) => {
+        const perfil = Array.isArray(candidaturaAtiva.perfis_candidatos)
+          ? candidaturaAtiva.perfis_candidatos[0]
+          : candidaturaAtiva.perfis_candidatos;
+        if (!perfil || perfisIncluidos.has(perfil.id)) return [];
+        perfisIncluidos.add(perfil.id);
 
-        return {
+        return [{
           id: perfil.id,
           nome_completo: perfil.nome_completo,
+          cpf: perfil.cpf,
+          titulo_eleitoral: perfil.titulo_eleitoral,
+          created_at: perfil.created_at,
           elo_score: perfil.elo_score || 0,
           matches_count: perfil.matches_count || 0,
-          nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
-          partido: candidaturaAtiva?.partido || 'S/P',
-          cargo: candidaturaAtiva?.cargo || 'Não informado',
-          uf: candidaturaAtiva?.uf || perfil.uf || 'BR',
-          municipio: candidaturaAtiva?.municipio || perfil.municipio || 'Não informado',
-          ultima_candidatura: candidaturaAtiva
-            ? {
-                ...candidaturaAtiva,
-                uf: candidaturaAtiva.uf || perfil.uf || 'BR',
-                municipio: candidaturaAtiva.municipio || perfil.municipio || 'Não informado',
-                sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
-              }
-            : null,
-        };
+          nome_urna: candidaturaAtiva.nome_urna || perfil.nome_completo,
+          partido: candidaturaAtiva.partido || 'S/P',
+          cargo: candidaturaAtiva.cargo,
+          uf: candidaturaAtiva.uf,
+          municipio: candidaturaAtiva.municipio,
+          ultima_candidatura: {
+            ...candidaturaAtiva,
+            perfil_id: perfil.id,
+            created_at: perfil.created_at,
+            sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
+          },
+        }];
       });
 
-      setRanking(mappedData as any);
+      setRanking(mappedData.slice(page * 10, page * 10 + 10));
       setLoading(false);
     }
 
     loadRanking();
   }, [page, selectedUf, selectedMunicipio]);
-
-  useEffect(() => {
-    if (selectedUf === 'BR') {
-      setSelectedMunicipio('');
-    }
-  }, [selectedUf]);
 
   useEffect(() => {
     setPage(0);
@@ -175,7 +156,7 @@ export default function Ranking() {
                   onChange={(event) => setSelectedUf(event.target.value)}
                 >
                   <option value="BR">Todos os Estados</option>
-                  {ufs.map((uf) => (
+                  {AVAILABLE_UFS.filter((uf) => uf !== 'BR').map((uf) => (
                     <option key={uf} value={uf}>{uf}</option>
                   ))}
                 </select>

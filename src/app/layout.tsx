@@ -27,6 +27,27 @@ export default function RootLayout({
 
   return (
     <html lang="pt-BR">
+      <head>
+        {googleAnalyticsId && (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(googleAnalyticsId)}`}
+            />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `
+                  window.dataLayer = window.dataLayer || [];
+                  function gtag(){dataLayer.push(arguments);}
+                  window.gtag = gtag;
+                  gtag('js', new Date());
+                  gtag('config', '${googleAnalyticsId}', { anonymize_ip: true });
+                `,
+              }}
+            />
+          </>
+        )}
+      </head>
       <body className="bg-slate-950 text-slate-100">
         {adsenseClient && (
           <Script

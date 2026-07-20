@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import Script from 'next/script';
 
 declare global {
   interface Window {
@@ -17,8 +16,14 @@ interface GoogleAnalyticsProps {
 
 export default function GoogleAnalytics({ measurementId }: GoogleAnalyticsProps) {
   const pathname = usePathname();
+  const isInitialPage = useRef(true);
 
   useEffect(() => {
+    if (isInitialPage.current) {
+      isInitialPage.current = false;
+      return;
+    }
+
     window.dataLayer = window.dataLayer || [];
     window.gtag = window.gtag || function gtag(...args: unknown[]) {
       window.dataLayer.push(args);
@@ -28,28 +33,7 @@ export default function GoogleAnalytics({ measurementId }: GoogleAnalyticsProps)
       page_location: window.location.href,
       page_title: document.title,
     });
-  }, [pathname]);
+  }, [measurementId, pathname]);
 
-  return (
-    <>
-      <Script
-        id="google-analytics-loader"
-        async
-        strategy="afterInteractive"
-        src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`}
-      />
-      <Script id="google-analytics-config" strategy="afterInteractive">
-        {`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          window.gtag = gtag;
-          gtag('js', new Date());
-          gtag('config', '${measurementId}', {
-            send_page_view: false,
-            anonymize_ip: true
-          });
-        `}
-      </Script>
-    </>
-  );
+  return null;
 }

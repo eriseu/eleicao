@@ -208,8 +208,6 @@ export default function Home() {
         </div>
       </section>
 
-      <AdBanner slot="1234567890" />
-
       {loading && (
         <p className="text-center text-slate-500">Carregando duelo...</p>
       )}

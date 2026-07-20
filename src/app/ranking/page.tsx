@@ -44,6 +44,74 @@ export default function Ranking() {
   useEffect(() => {
     async function loadRanking() {
       setLoading(true);
+
+      if (selectedUf === 'BR') {
+        const from = page * 10;
+        const { data, error } = await supabase
+          .from('perfis_candidatos')
+          .select(`
+            id,
+            nome_completo,
+            cpf,
+            titulo_eleitoral,
+            created_at,
+            elo_score,
+            matches_count,
+            candidaturas!perfil_id!inner (
+              foto,
+              nome_urna,
+              partido,
+              cargo,
+              ano_eleicao,
+              uf,
+              municipio,
+              sq_candidato
+            )
+          `)
+          .in('candidaturas.ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+          .order('elo_score', { ascending: false })
+          .range(from, from + 9);
+
+        if (error || !data) {
+          console.error('Erro ao carregar ranking nacional:', error?.message);
+          setRanking([]);
+          setLoading(false);
+          return;
+        }
+
+        const mappedProfiles: Candidato[] = data.flatMap((perfil) => {
+          const candidaturaAtiva = [...perfil.candidaturas].sort(
+            (a, b) => (b.ano_eleicao || 0) - (a.ano_eleicao || 0)
+          )[0];
+          if (!candidaturaAtiva) return [];
+
+          return [{
+            id: perfil.id,
+            nome_completo: perfil.nome_completo,
+            cpf: perfil.cpf,
+            titulo_eleitoral: perfil.titulo_eleitoral,
+            created_at: perfil.created_at,
+            elo_score: perfil.elo_score || 0,
+            matches_count: perfil.matches_count || 0,
+            nome_urna: candidaturaAtiva.nome_urna || perfil.nome_completo,
+            partido: candidaturaAtiva.partido || 'S/P',
+            cargo: candidaturaAtiva.cargo,
+            uf: candidaturaAtiva.uf,
+            municipio: candidaturaAtiva.municipio,
+            ultima_candidatura: {
+              ...candidaturaAtiva,
+              perfil_id: perfil.id,
+              created_at: perfil.created_at,
+              sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
+            },
+          }];
+        });
+
+        setRanking(mappedProfiles.sort((a, b) => b.elo_score - a.elo_score));
+        setLoading(false);
+        return;
+      }
+
       const to = (page + 1) * 50 - 1;
 
       let query = supabase
@@ -118,7 +186,8 @@ export default function Ranking() {
         }];
       });
 
-      setRanking(mappedData.slice(page * 10, page * 10 + 10));
+      const sortedData = mappedData.sort((a, b) => b.elo_score - a.elo_score);
+      setRanking(sortedData.slice(page * 10, page * 10 + 10));
       setLoading(false);
     }
 

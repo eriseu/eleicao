@@ -402,7 +402,7 @@ export default function DueloClient() {
                   disabled={submitting || !otherCandidate}
                   aria-label={`Escolher ${candidate.nome_urna || candidate.nome_completo}`}
                 >
-                  <CandidateImage candidato={candidate} alt={candidate.nome_completo} className="h-80 w-full object-cover" />
+                  <CandidateImage candidato={candidate} alt={candidate.nome_completo} className="h-56 w-full object-cover sm:h-72" />
                 </button>
                 <div className="space-y-3 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300">{candidate.cargo} · {candidate.partido}</p>

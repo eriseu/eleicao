@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
+import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
 export default function DueloClient() {
@@ -24,11 +25,15 @@ export default function DueloClient() {
     sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf) ? sharedUf : 'BR'
   );
   const [selectedMunicipio, setSelectedMunicipio] = useState('');
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
+      setLoadingCandidates(true);
       const candidateSelection = `
             foto,
             nome_urna,
@@ -48,30 +53,51 @@ export default function DueloClient() {
               matches_count
             )
           `;
-      const sharedRequest = supabase
-            .from('candidaturas')
-            .select(candidateSelection)
-            .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-            .in('perfil_id', [sharedC1Id!, sharedC2Id!])
-            .order('ano_eleicao', { ascending: false });
-      const requests = isSharedDuel
-        ? [hasValidSharedUf ? sharedRequest.eq('uf', sharedUf!) : sharedRequest]
-        : ACTIVE_ELECTION_YEARS.map((ano) =>
-            supabase
+      const results = isSharedDuel
+        ? await Promise.all([
+            (() => {
+              const sharedRequest = supabase
+                .from('candidaturas')
+                .select(candidateSelection)
+                .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+                .in('perfil_id', [sharedC1Id!, sharedC2Id!])
+                .order('ano_eleicao', { ascending: false });
+              return hasValidSharedUf ? sharedRequest.eq('uf', sharedUf!) : sharedRequest;
+            })(),
+          ])
+        : await Promise.all(ACTIVE_ELECTION_YEARS.map(async (ano) => {
+            const rows = [];
+            const batchSize = 50;
+
+            for (let from = 0; ; from += batchSize) {
+              let query = supabase
               .from('candidaturas')
               .select(candidateSelection)
               .eq('ano_eleicao', ano)
               .eq('uf', selectedUf)
-              .limit(1000)
-          );
+                .range(from, from + batchSize - 1);
 
-      const results = await Promise.all(requests);
+              if (selectedMunicipio) {
+                query = query.eq('municipio', selectedMunicipio);
+              }
+
+              const result = await query;
+              if (result.error || !result.data) return result;
+              rows.push(...result.data);
+              break;
+            }
+
+            return { data: rows, error: null };
+          }));
 
       const failedResult = results.find(({ error }) => error);
 
       if (failedResult?.error) {
         console.error('Erro ao buscar candidatos para o duelo:', failedResult.error.message);
-        setCandidates([]);
+        if (!cancelled) {
+          setCandidates([]);
+          setLoadingCandidates(false);
+        }
         return;
       }
 
@@ -111,14 +137,25 @@ export default function DueloClient() {
         }];
       });
 
+      if (cancelled) return;
       setCandidates(mappedData);
+      setLoadingCandidates(false);
       if (isSharedDuel && !hasValidSharedUf && mappedData[0]?.uf) {
         setSelectedUf(mappedData[0].uf);
       }
     }
 
-    loadData();
-  }, [hasValidSharedUf, isSharedDuel, selectedUf, sharedC1Id, sharedC2Id, sharedUf]);
+    void loadData();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasValidSharedUf, isSharedDuel, selectedMunicipio, selectedUf, sharedC1Id, sharedC2Id, sharedUf]);
+
+  const getCandidateLabel = (candidate: Candidato) => {
+    const nome = candidate.ultima_candidatura?.nome_urna || candidate.nome_urna || candidate.nome_completo;
+    const partido = candidate.ultima_candidatura?.partido || candidate.partido;
+    return `${nome}${partido ? ` (${partido})` : ''}`;
+  };
 
   const municipioOptions = useMemo(() => {
     if (selectedUf === 'BR') return [];
@@ -135,18 +172,14 @@ export default function DueloClient() {
   const filteredCandidates = useMemo(() => {
     if (isSharedDuel) return candidates;
 
-    return candidates.filter((candidate) => {
-      if (candidate.uf !== selectedUf) return false;
-      if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
-      return true;
-    });
+    return candidates
+      .filter((candidate) => {
+        if (candidate.uf !== selectedUf) return false;
+        if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
+        return true;
+      })
+      .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
   }, [candidates, isSharedDuel, selectedUf, selectedMunicipio]);
-
-  const getCandidateLabel = (candidate: Candidato) => {
-    const nome = candidate.ultima_candidatura?.nome_urna || candidate.nome_urna || candidate.nome_completo;
-    const partido = candidate.ultima_candidatura?.partido || candidate.partido;
-    return `${nome}${partido ? ` (${partido})` : ''}`;
-  };
 
   useEffect(() => {
     if (sharedC1Id) {
@@ -167,11 +200,6 @@ export default function DueloClient() {
       setC2(null);
     }
   }, [filteredCandidates, isSharedDuel, sharedC1Id, sharedC2Id]);
-
-  const candidateOptions2 = useMemo(
-    () => filteredCandidates.filter((candidate) => candidate.id !== c1?.id),
-    [filteredCandidates, c1]
-  );
 
   const availableCandidatesCount = filteredCandidates.length;
   const canClearFilters = selectedUf !== 'BR' || selectedMunicipio !== '';
@@ -205,6 +233,18 @@ export default function DueloClient() {
     return chosen;
   }, [filteredCandidates, c1, c2]);
 
+  const getRankingUrl = (candidate: Candidato) => {
+    const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
+    const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
+    const params = new URLSearchParams({ uf, highlight: candidate.id });
+
+    if (uf !== 'BR' && municipio) {
+      params.set('municipio', municipio);
+    }
+
+    return `/ranking?${params.toString()}`;
+  };
+
   const escolher = async (escolhido: Candidato, outro: Candidato) => {
     if (submitting) return;
     setSubmitting(true);
@@ -222,14 +262,14 @@ export default function DueloClient() {
 
       if (!response.ok) {
         if (response.status === 409) {
-          router.replace('/ranking');
+          router.replace(getRankingUrl(escolhido));
           return;
         }
         setFeedback(result.error || 'Não foi possível concluir a comparação.');
         return;
       }
 
-      router.replace('/ranking');
+      router.replace(getRankingUrl(escolhido));
     } catch (error) {
       console.error('Erro ao registrar escolha:', error);
       setFeedback('Não foi possível concluir a comparação.');
@@ -299,7 +339,7 @@ export default function DueloClient() {
                   <p className="mt-2 text-sm text-white">
                     {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
                   </p>
-                  <p className="mt-2 text-sm text-slate-300">{availableCandidatesCount} candidato{availableCandidatesCount === 1 ? '' : 's'} disponível{availableCandidatesCount === 1 ? '' : 's'}</p>
+                  <p className="mt-2 text-sm text-slate-300">Candidatos pesquisados sob demanda</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -313,7 +353,7 @@ export default function DueloClient() {
                   <button
                     type="button"
                     onClick={randomizeMatch}
-                    disabled={isSharedDuel || availableCandidatesCount < 2}
+                    disabled={isSharedDuel || loadingCandidates || availableCandidatesCount < 2}
                     className="inline-flex items-center justify-center rounded-2xl border border-emerald-500 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Aleatório
@@ -324,45 +364,24 @@ export default function DueloClient() {
           </section>}
 
           {!isSharedDuel && <section className="mb-6 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Candidato 1</span>
-              <select
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
-                value={c1?.id || ''}
-                disabled={isSharedDuel}
-                onChange={(event) => {
-                  const next = filteredCandidates.find((candidate) => candidate.id === event.target.value) || null;
-                  setC1(next);
-                }}
-              >
-                <option value="">Selecione o candidato 1</option>
-                {filteredCandidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>{getCandidateLabel(candidate)}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Candidato 2</span>
-              <select
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
-                value={c2?.id || ''}
-                disabled={isSharedDuel}
-                onChange={(event) => {
-                  const next = candidateOptions2.find((candidate) => candidate.id === event.target.value) || null;
-                  setC2(next);
-                }}
-              >
-                <option value="">Selecione o candidato 2</option>
-                {candidateOptions2.length > 0 ? (
-                  candidateOptions2.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>{getCandidateLabel(candidate)}</option>
-                  ))
-                ) : (
-                  <option value="" disabled>Sem opção disponível</option>
-                )}
-              </select>
-            </label>
+            <CandidateAutocomplete
+              label="Candidato 1"
+              selected={c1}
+              onSelect={setC1}
+              uf={selectedUf}
+              municipio={selectedMunicipio}
+              excludeId={c2?.id}
+              disabled={loadingCandidates}
+            />
+            <CandidateAutocomplete
+              label="Candidato 2"
+              selected={c2}
+              onSelect={setC2}
+              uf={selectedUf}
+              municipio={selectedMunicipio}
+              excludeId={c1?.id}
+              disabled={loadingCandidates}
+            />
           </section>}
 
           <section className={isSharedDuel ? 'mx-auto grid w-full max-w-sm grid-cols-2 gap-4' : 'grid gap-4 sm:grid-cols-2'}>

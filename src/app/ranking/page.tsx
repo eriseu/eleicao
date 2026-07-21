@@ -1,18 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
-export default function Ranking() {
+function RankingContent() {
+  const searchParams = useSearchParams();
+  const requestedUf = searchParams.get('uf');
+  const initialUf = requestedUf && AVAILABLE_UFS.some((uf) => uf === requestedUf)
+    ? requestedUf
+    : 'BR';
   const [ranking, setRanking] = useState<Candidato[]>([]);
   const [page, setPage] = useState(0);
   const [municipios, setMunicipios] = useState<string[]>([]);
-  const [selectedUf, setSelectedUf] = useState('BR');
-  const [selectedMunicipio, setSelectedMunicipio] = useState('');
+  const [selectedUf, setSelectedUf] = useState(initialUf);
+  const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
+  const [highlightedId, setHighlightedId] = useState(searchParams.get('highlight') || '');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -35,7 +42,6 @@ export default function Ranking() {
         new Set((data || []).map((item) => item.municipio).filter(Boolean))
       ).sort();
       setMunicipios(uniqueMunicipios);
-      setSelectedMunicipio('');
     }
 
     void loadMunicipios();
@@ -44,6 +50,94 @@ export default function Ranking() {
   useEffect(() => {
     async function loadRanking() {
       setLoading(true);
+
+      if (highlightedId) {
+        const relatedRows = [];
+        const batchSize = 1000;
+
+        for (let from = 0; ; from += batchSize) {
+          let highlightedQuery = supabase
+            .from('candidaturas')
+            .select(`
+              foto,
+              nome_urna,
+              partido,
+              cargo,
+              ano_eleicao,
+              uf,
+              municipio,
+              sq_candidato,
+              perfis_candidatos!perfil_id (
+                id,
+                nome_completo,
+                cpf,
+                titulo_eleitoral,
+                created_at,
+                elo_score,
+                matches_count
+              )
+            `)
+            .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+            .eq('uf', selectedUf)
+            .order('ano_eleicao', { ascending: false })
+            .range(from, from + batchSize - 1);
+
+          if (selectedUf !== 'BR' && selectedMunicipio) {
+            highlightedQuery = highlightedQuery.eq('municipio', selectedMunicipio);
+          }
+
+          const { data, error } = await highlightedQuery;
+
+          if (error || !data) {
+            console.error('Erro ao carregar ranking relacionado:', error?.message);
+            setRanking([]);
+            setLoading(false);
+            return;
+          }
+
+          relatedRows.push(...data);
+          if (data.length < batchSize) break;
+        }
+
+        const includedProfiles = new Set<string>();
+        const relatedRanking: Candidato[] = relatedRows.flatMap((candidatura) => {
+          const perfil = Array.isArray(candidatura.perfis_candidatos)
+            ? candidatura.perfis_candidatos[0]
+            : candidatura.perfis_candidatos;
+          if (!perfil || includedProfiles.has(perfil.id)) return [];
+          includedProfiles.add(perfil.id);
+
+          return [{
+            id: perfil.id,
+            nome_completo: perfil.nome_completo,
+            cpf: perfil.cpf,
+            titulo_eleitoral: perfil.titulo_eleitoral,
+            created_at: perfil.created_at,
+            elo_score: perfil.elo_score || 0,
+            matches_count: perfil.matches_count || 0,
+            nome_urna: candidatura.nome_urna || perfil.nome_completo,
+            partido: candidatura.partido || 'S/P',
+            cargo: candidatura.cargo,
+            uf: candidatura.uf,
+            municipio: candidatura.municipio,
+            ultima_candidatura: {
+              ...candidatura,
+              perfil_id: perfil.id,
+              created_at: perfil.created_at,
+              sq_candidato: candidatura.sq_candidato || candidatura.foto,
+            },
+          }];
+        }).sort((a, b) =>
+          b.elo_score - a.elo_score || a.nome_completo.localeCompare(b.nome_completo, 'pt-BR')
+        );
+
+        const highlightedPosition = relatedRanking.findIndex((candidate) => candidate.id === highlightedId);
+        const targetPage = highlightedPosition >= 0 ? Math.floor(highlightedPosition / 10) : 0;
+        setPage(targetPage);
+        setRanking(relatedRanking.slice(targetPage * 10, targetPage * 10 + 10));
+        setLoading(false);
+        return;
+      }
 
       if (selectedUf === 'BR') {
         const from = page * 10;
@@ -192,7 +286,15 @@ export default function Ranking() {
     }
 
     loadRanking();
-  }, [page, selectedUf, selectedMunicipio]);
+  }, [highlightedId, page, selectedUf, selectedMunicipio]);
+
+  useEffect(() => {
+    if (!highlightedId || loading) return;
+    document.getElementById(`ranking-${highlightedId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [highlightedId, loading, ranking]);
 
   useEffect(() => {
     setPage(0);
@@ -222,7 +324,12 @@ export default function Ranking() {
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedUf}
-                  onChange={(event) => setSelectedUf(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedUf(event.target.value);
+                    setSelectedMunicipio('');
+                    setHighlightedId('');
+                    setPage(0);
+                  }}
                 >
                   <option value="BR">Todos os Estados</option>
                   {AVAILABLE_UFS.filter((uf) => uf !== 'BR').map((uf) => (
@@ -235,7 +342,11 @@ export default function Ranking() {
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedMunicipio}
-                  onChange={(event) => setSelectedMunicipio(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedMunicipio(event.target.value);
+                    setHighlightedId('');
+                    setPage(0);
+                  }}
                   disabled={selectedUf === 'BR'}
                 >
                   <option value="">Todos os Municípios</option>
@@ -254,6 +365,8 @@ export default function Ranking() {
                   onClick={() => {
                     setSelectedUf('BR');
                     setSelectedMunicipio('');
+                    setHighlightedId('');
+                    setPage(0);
                   }}
                   disabled={selectedUf === 'BR' && selectedMunicipio === ''}
                   className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -274,7 +387,12 @@ export default function Ranking() {
                 <Link
                   href={`/candidato/${cand.id}`}
                   key={cand.id}
-                  className="group flex items-center gap-4 rounded-[28px] border border-white/10 bg-slate-900/80 p-4 transition hover:border-slate-500 hover:bg-slate-800"
+                  id={`ranking-${cand.id}`}
+                  className={`group flex items-center gap-4 rounded-[28px] border p-4 transition ${
+                    cand.id === highlightedId
+                      ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-400/40'
+                      : 'border-white/10 bg-slate-900/80 hover:border-slate-500 hover:bg-slate-800'
+                  }`}
                 >
                   <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-700 bg-slate-950">
                     <CandidateImage candidato={cand} alt={cand.nome_completo} className="h-full w-full object-cover rounded-3xl" />
@@ -282,7 +400,12 @@ export default function Ranking() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-bold text-white">{cand.nome_completo}</p>
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * 10 + index + 1}º</span>
+                      <div className="flex items-center gap-2">
+                        {cand.id === highlightedId && (
+                          <span className="hidden rounded-full bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase text-slate-950 sm:inline">Destaque</span>
+                        )}
+                        <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * 10 + index + 1}º</span>
+                      </div>
                     </div>
                     <p className="mt-1 text-sm text-slate-400">{cand.cargo} · {cand.partido}</p>
                     <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{cand.municipio} · {cand.uf}</p>
@@ -319,5 +442,13 @@ export default function Ranking() {
           </div>
         </div>
       </main>
+  );
+}
+
+export default function Ranking() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando ranking...</div>}>
+      <RankingContent />
+    </Suspense>
   );
 }

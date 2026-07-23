@@ -16,23 +16,51 @@ interface GoogleAnalyticsProps {
 
 export default function GoogleAnalytics({ measurementId }: GoogleAnalyticsProps) {
   const pathname = usePathname();
-  const isInitialPage = useRef(true);
+  const lastTrackedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isInitialPage.current) {
-      isInitialPage.current = false;
+    const currentRoute = pathname ?? '/';
+    const trackingKey = `${measurementId}:${currentRoute}`;
+
+    if (lastTrackedRef.current === trackingKey) {
       return;
     }
 
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = window.gtag || function gtag(...args: unknown[]) {
-      window.dataLayer.push(args);
+    lastTrackedRef.current = trackingKey;
+
+    const sendPageView = (attempt = 0) => {
+      const maxAttempts = 20;
+
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = window.gtag || function gtag(...args: unknown[]) {
+        window.dataLayer.push(args);
+      };
+
+      if (typeof window.gtag === 'function') {
+        window.gtag('config', measurementId, {
+          page_path: currentRoute,
+          page_location: window.location.href,
+          page_title: document.title,
+        });
+
+        window.gtag('event', 'page_view', {
+          page_path: currentRoute,
+          page_location: window.location.href,
+          page_title: document.title,
+        });
+        return;
+      }
+
+      if (attempt < maxAttempts) {
+        window.setTimeout(() => sendPageView(attempt + 1), 100);
+      }
     };
-    window.gtag('event', 'page_view', {
-      page_path: pathname,
-      page_location: window.location.href,
-      page_title: document.title,
-    });
+
+    sendPageView();
   }, [measurementId, pathname]);
 
   return null;

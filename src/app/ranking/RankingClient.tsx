@@ -376,7 +376,7 @@ function RankingContent() {
                     setPage(0);
                   }}
                 >
-                  <option value="BR">Todos os Estados</option>
+                  <option value="BR">Brasil</option>
                   {AVAILABLE_UFS.filter((uf) => uf !== 'BR').map((uf) => (
                     <option key={uf} value={uf}>{uf}</option>
                   ))}

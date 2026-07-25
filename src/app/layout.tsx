@@ -1,123 +1,49 @@
-import "./globals.css";
-import type { Metadata } from "next";
-import Script from 'next/script';
-import BottomNav from '@/components/layout/BottomNav';
-import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
-import { getSiteUrl, SITE_DESCRIPTION, SITE_NAME } from '@/lib/seo';
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'] });
+
+const siteUrl = 'https://politica.centraleti.com.br';
+const siteTitle = 'Duelo Político - Quem te representa melhor?';
+const siteDescription = 'Compare candidatos e veja quem está mais alinhado com suas escolhas. Participe do ranking e compartilhe seus duelos.';
+const ogImageUrl = `${siteUrl}/politica.centraleti.com.br.png`;
 
 export const metadata: Metadata = {
-  metadataBase: new URL(getSiteUrl()),
-  title: {
-    default: `${SITE_NAME} — Compare candidatos e veja o ranking`,
-    template: `%s | ${SITE_NAME}`,
-  },
-  description: SITE_DESCRIPTION,
-  applicationName: SITE_NAME,
-  keywords: [
-    'candidatos',
-    'eleições',
-    'ranking político',
-    'duelo político',
-    'política brasileira',
-  ],
-  alternates: {
-    canonical: '/',
-  },
+  title: siteTitle,
+  description: siteDescription,
   openGraph: {
-    type: 'website',
+    title: siteTitle,
+    description: siteDescription,
+    url: siteUrl,
+    siteName: 'Duelo Político',
+    images: [
+      {
+        url: ogImageUrl,
+        width: 1200,
+        height: 630,
+        alt: 'Arte promocional do Duelo Político',
+      },
+    ],
     locale: 'pt_BR',
-    siteName: SITE_NAME,
-    title: `${SITE_NAME} — Compare candidatos e veja o ranking`,
-    description: SITE_DESCRIPTION,
-    url: '/',
+    type: 'website',
   },
   twitter: {
-    card: 'summary',
-    title: `${SITE_NAME} — Compare candidatos e veja o ranking`,
-    description: SITE_DESCRIPTION,
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-      'max-video-preview': -1,
-    },
+    card: 'summary_large_image',
+    title: siteTitle,
+    description: siteDescription,
+    images: [ogImageUrl],
   },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
-  const configuredClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
-  const adsenseClient = configuredClient?.startsWith('ca-')
-    ? configuredClient
-    : configuredClient?.startsWith('pub-')
-      ? `ca-${configuredClient}`
-      : null;
-  const configuredAnalyticsId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
-  const googleAnalyticsId = configuredAnalyticsId && /^G-[A-Z0-9]+$/i.test(configuredAnalyticsId)
-    ? configuredAnalyticsId
-    : null;
-  const websiteStructuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: SITE_NAME,
-    url: getSiteUrl(),
-    description: SITE_DESCRIPTION,
-    inLanguage: 'pt-BR',
-  };
-
+}) {
   return (
     <html lang="pt-BR">
-      <head>
-        {googleAnalyticsId && (
-          <>
-            <script
-              async
-              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(googleAnalyticsId)}`}
-            />
-            <script
-              dangerouslySetInnerHTML={{
-                __html: `
-                  window.dataLayer = window.dataLayer || [];
-                  function gtag(){dataLayer.push(arguments);}
-                  window.gtag = gtag;
-                  gtag('js', new Date());
-                  gtag('config', '${googleAnalyticsId}', { anonymize_ip: true });
-                `,
-              }}
-            />
-          </>
-        )}
-      </head>
-      <body className="bg-slate-950 text-slate-100">
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(websiteStructuredData).replace(/</g, '\\u003c'),
-          }}
-        />
-        {adsenseClient && (
-          <Script
-            id="adsense-auto-ads"
-            async
-            strategy="afterInteractive"
-            crossOrigin="anonymous"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient)}`}
-          />
-        )}
-        {googleAnalyticsId && (
-          <GoogleAnalytics measurementId={googleAnalyticsId} />
-        )}
-        {children}
-        <BottomNav />
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

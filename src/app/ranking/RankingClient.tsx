@@ -25,7 +25,7 @@ function getStateNameFromUf(uf: string): string {
 function RankingContent() {
   const searchParams = useSearchParams();
   const requestedUf = searchParams.get('uf')?.toUpperCase();
-  const initialUf = requestedUf && AVAILABLE_UFS.includes(requestedUf)
+  const initialUf = requestedUf && AVAILABLE_UFS.some(uf => uf === requestedUf)
     ? requestedUf 
     : 'BR';
   const [ranking, setRanking] = useState<Candidato[]>([]);

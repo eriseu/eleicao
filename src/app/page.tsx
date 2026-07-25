@@ -135,11 +135,15 @@ export default function Home() {
   const municipios = useMemo(() => {
     if (selectedUf === 'BR') return [];
     return Array.from(
-      new Set(
-        candidates
-          .filter((c) => c.ultima_candidatura?.uf === selectedUf)
-          .map((c) => c.ultima_candidatura?.municipio)
-          .filter(Boolean)
+      new Set( // Usamos um Set para garantir que os municípios sejam únicos
+        candidates // Começamos com a lista completa de candidatos
+          .filter(
+            (c) =>
+              c.ultima_candidatura?.uf === selectedUf && // Filtramos pelo estado selecionado
+              ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'].includes(c.ultima_candidatura?.cargo || '') // Consideramos apenas cargos municipais
+          )
+          .map((c) => c.ultima_candidatura?.municipio) // Extraímos o nome do município
+          .filter((m): m is string => !!m) // Filtramos valores nulos ou vazios
       )
     ).sort();
   }, [candidates, selectedUf]);

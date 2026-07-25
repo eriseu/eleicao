@@ -8,6 +8,20 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 
+const ufToStateName: { [key: string]: string } = {
+  'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas', 'BA': 'Bahia',
+  'CE': 'Ceará', 'DF': 'Distrito Federal', 'ES': 'Espírito Santo', 'GO': 'Goiás',
+  'MA': 'Maranhão', 'MT': 'Mato Grosso', 'MS': 'Mato Grosso do Sul', 'MG': 'Minas Gerais',
+  'PA': 'Pará', 'PB': 'Paraíba', 'PR': 'Paraná', 'PE': 'Pernambuco', 'PI': 'Piauí',
+  'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte', 'RS': 'Rio Grande do Sul',
+  'RO': 'Rondônia', 'RR': 'Roraima', 'SC': 'Santa Catarina', 'SP': 'São Paulo',
+  'SE': 'Sergipe', 'TO': 'Tocantins', 'BR': 'Brasil'
+};
+
+function getStateNameFromUf(uf: string): string {
+  return ufToStateName[uf.toUpperCase()] || uf;
+}
+
 function RankingContent() {
   const searchParams = useSearchParams();
   const requestedUf = searchParams.get('uf');
@@ -68,11 +82,14 @@ function RankingContent() {
       let cargos: string[] = [];
       if (selectedUf === 'BR') {
         cargos = cargosPorEscopo.nacional;
-      } else if (
-        selectedMunicipio &&
-        selectedMunicipio.localeCompare(selectedUf, 'pt-BR', { sensitivity: 'base' }) !== 0
+      } else if (selectedMunicipio) {
+        const stateName = getStateNameFromUf(selectedUf);
+        if (selectedMunicipio.localeCompare(stateName, 'pt-BR', { sensitivity: 'base' }) !== 0) {
+          cargos = cargosPorEscopo.municipal;
+        } else {
+          cargos = cargosPorEscopo.estadual;
+        }
       ) {
-        cargos = cargosPorEscopo.municipal;
       } else {
         cargos = cargosPorEscopo.estadual;
       }

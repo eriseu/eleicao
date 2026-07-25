@@ -68,7 +68,10 @@ function RankingContent() {
       let cargos: string[] = [];
       if (selectedUf === 'BR') {
         cargos = cargosPorEscopo.nacional;
-      } else if (selectedMunicipio) {
+      } else if (
+        selectedMunicipio &&
+        selectedMunicipio.localeCompare(selectedUf, 'pt-BR', { sensitivity: 'base' }) !== 0
+      ) {
         cargos = cargosPorEscopo.municipal;
       } else {
         cargos = cargosPorEscopo.estadual;

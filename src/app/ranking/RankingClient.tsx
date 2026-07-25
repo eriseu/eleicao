@@ -39,7 +39,9 @@ function RankingContent() {
         .limit(1000);
 
       const uniqueMunicipios = Array.from(
-        new Set((data || []).map((item) => item.municipio).filter(Boolean))
+        new Set((data || [])
+          .map((item) => item.municipio)
+          .filter((m): m is string => Boolean(m) && m !== selectedUf)))
       ).sort();
       setMunicipios(uniqueMunicipios);
     }

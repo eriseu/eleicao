@@ -262,7 +262,7 @@ export default function DueloClient() {
     const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
     const params = new URLSearchParams({ uf, highlight: candidate.id });
 
-    if (uf !== 'BR' && municipio) {
+    if (uf !== 'BR' && municipio && municipio !== uf) {
       params.set('municipio', municipio);
     }
 

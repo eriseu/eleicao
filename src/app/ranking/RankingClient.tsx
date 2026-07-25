@@ -35,6 +35,7 @@ function RankingContent() {
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
   const [highlightedId, setHighlightedId] = useState(searchParams.get('highlight') || '');
   const [loading, setLoading] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState('');
 
   useEffect(() => {
     if (selectedUf === 'BR') {
@@ -351,6 +352,39 @@ function RankingContent() {
     return true;
   });
 
+  const handleShare = async () => {
+    const region = selectedMunicipio || getStateNameFromUf(selectedUf);
+    const shareData = {
+      title: 'Ranking Duelo Político',
+      text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback para copiar o link
+        await navigator.clipboard.writeText(shareData.url);
+        setShareFeedback('Link copiado para a área de transferência!');
+        setTimeout(() => setShareFeedback(''), 3000); // Limpa o feedback após 3 segundos
+      }
+    } catch (error) {
+      console.error('Erro ao compartilhar:', error);
+      // Fallback caso o compartilhamento falhe (ex: usuário cancelou)
+      try {
+        await navigator.clipboard.writeText(shareData.url);
+        setShareFeedback('Link copiado para a área de transferência!');
+        setTimeout(() => setShareFeedback(''), 3000);
+      } catch (copyError) {
+        console.error('Erro ao copiar o link:', copyError);
+        setShareFeedback('Não foi possível compartilhar ou copiar o link.');
+        setTimeout(() => setShareFeedback(''), 3000);
+      }
+    }
+  };
+
+
   return (
       <main className="bg-slate-950 text-slate-100 pb-28">
         <div className="mx-auto max-w-3xl px-4 py-6">
@@ -485,6 +519,20 @@ function RankingContent() {
               Próxima
             </button>
           </div>
+
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="inline-flex items-center justify-center rounded-full border border-emerald-500 bg-emerald-500 px-8 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 hover:border-emerald-400"
+            >
+              Compartilhar Ranking
+            </button>
+            {shareFeedback && (
+              <p className="mt-3 text-xs text-emerald-300">{shareFeedback}</p>
+            )}
+          </div>
+
         </div>
       </main>
   );

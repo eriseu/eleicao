@@ -137,8 +137,8 @@ export default function Home() {
     return Array.from(
       new Set(
         candidates
-          .filter((candidate) => (candidate.ultima_candidatura?.uf || candidate.uf || 'BR') === selectedUf)
-          .map((candidate) => candidate.ultima_candidatura?.municipio || candidate.municipio)
+          .filter((c) => c.ultima_candidatura?.uf === selectedUf)
+          .map((c) => c.ultima_candidatura?.municipio)
           .filter(Boolean)
       )
     ).sort();

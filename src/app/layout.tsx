@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
-import FooterMenu from '@/components/FooterMenu';
+import FooterMenu from '@/components/layout/Navbar';
 const inter = Inter({ subsets: ['latin'] });
 
 const siteUrl = 'https://politica.centraleti.com.br';

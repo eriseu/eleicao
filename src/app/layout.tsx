@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
+import FooterMenu from '@/components/ui/FooterMenu';
 const inter = Inter({ subsets: ['latin'] });
 
 const siteUrl = 'https://politica.centraleti.com.br';
@@ -43,7 +44,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <main>
+          {children}
+        </main>
+        <FooterMenu />
+      </body>
     </html>
   );
 }

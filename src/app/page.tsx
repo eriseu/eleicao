@@ -36,7 +36,7 @@ export default function Home() {
     } else if (selectedMunicipio) {
       cargos = cargosPorEscopo.municipal;
     } else {
-      cargos = cargosPorEscopo.estadual;
+      cargos = [...cargosPorEscopo.estadual, ...cargosPorEscopo.municipal];
     }
 
     try {

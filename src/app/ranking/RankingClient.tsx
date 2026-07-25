@@ -89,8 +89,7 @@ function RankingContent() {
         } else {
           cargos = cargosPorEscopo.estadual;
         }
-      ) {
-      } else {
+      }  else {
         cargos = cargosPorEscopo.estadual;
       }
 

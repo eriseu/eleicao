@@ -33,6 +33,20 @@ export default function DueloClient() {
     let cancelled = false;
 
     async function loadData() {
+      const cargosPorEscopo: { [key: string]: string[] } = {
+        nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+        estadual: [
+          'DEPUTADO ESTADUAL',
+          'DEPUTADO FEDERAL',
+          'GOVERNADOR',
+          'VICE-GOVERNADOR',
+          'SENADOR',
+        ],
+        municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+      };
+
+      let cargos: string[] = [];
+
       setLoadingCandidates(true);
       const candidateSelection = `
             foto,
@@ -67,24 +81,34 @@ export default function DueloClient() {
           ])
         : await Promise.all(ACTIVE_ELECTION_YEARS.map(async (ano) => {
             const rows = [];
-            const batchSize = 50;
+            const batchSize = 1000; // Aumentado para buscar mais candidatos por vez
 
             for (let from = 0; ; from += batchSize) {
+              if (selectedUf === 'BR') {
+                cargos = cargosPorEscopo.nacional;
+              } else if (selectedMunicipio) {
+                cargos = cargosPorEscopo.municipal;
+              } else {
+                cargos = cargosPorEscopo.estadual;
+              }
+
               let query = supabase
               .from('candidaturas')
               .select(candidateSelection)
-              .eq('ano_eleicao', ano)
-              .eq('uf', selectedUf)
-                .range(from, from + batchSize - 1);
+              .eq('ano_eleicao', ano);
+
+              if (selectedUf !== 'BR') {
+                query = query.eq('uf', selectedUf);
+              }
 
               if (selectedMunicipio) {
                 query = query.eq('municipio', selectedMunicipio);
               }
 
-              const result = await query;
+              const result = await query.in('cargo', cargos).range(from, from + batchSize - 1);
               if (result.error || !result.data) return result;
               rows.push(...result.data);
-              break;
+              if (result.data.length < batchSize) break;
             }
 
             return { data: rows, error: null };

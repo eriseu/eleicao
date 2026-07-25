@@ -18,10 +18,31 @@ export default function Home() {
   const fetchCandidates = async () => {
     setLoading(true);
 
+    const cargosPorEscopo: { [key: string]: string[] } = {
+      nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+      estadual: [
+        'DEPUTADO ESTADUAL',
+        'DEPUTADO FEDERAL',
+        'GOVERNADOR',
+        'VICE-GOVERNADOR',
+        'SENADOR',
+      ],
+      municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+    };
+
+    let cargos: string[] = [];
+    if (selectedUf === 'BR') {
+      cargos = cargosPorEscopo.nacional;
+    } else if (selectedMunicipio) {
+      cargos = cargosPorEscopo.municipal;
+    } else {
+      cargos = cargosPorEscopo.estadual;
+    }
+
     try {
       const results = await Promise.all(
-        ACTIVE_ELECTION_YEARS.map((ano) =>
-          supabase
+        ACTIVE_ELECTION_YEARS.map((ano) => {
+          let query = supabase
             .from('candidaturas')
             .select(`
             foto,
@@ -42,10 +63,16 @@ export default function Home() {
               matches_count
             )
           `)
-            .eq('ano_eleicao', ano)
-            .eq('uf', selectedUf)
-            .limit(1000)
-        )
+            .eq('ano_eleicao', ano);
+
+          if (selectedUf !== 'BR') {
+            query = query.eq('uf', selectedUf);
+          }
+          if (selectedMunicipio) {
+            query = query.eq('municipio', selectedMunicipio);
+          }
+          return query.in('cargo', cargos).limit(1000);
+        })
       );
 
       const failedResult = results.find(({ error }) => error);
@@ -118,27 +145,20 @@ export default function Home() {
   }, [candidates, selectedUf]);
 
   const filteredCandidates = useMemo(() => {
-    return candidates.filter((candidate) => {
-      const candidateUf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
-      const candidateMunicipio = candidate.ultima_candidatura?.municipio || candidate.municipio || '';
-
-      if (candidateUf !== selectedUf) return false;
-      if (selectedMunicipio && candidateMunicipio !== selectedMunicipio) return false;
-      return true;
-    });
-  }, [candidates, selectedUf, selectedMunicipio]);
+    // A filtragem agora é feita diretamente na query, então apenas retornamos os candidatos.
+    // Poderíamos adicionar filtros do lado do cliente aqui se necessário no futuro.
+    return candidates;
+  }, [candidates]);
 
   const pickRandomPair = (source: Candidato[]) => {
+    if (source.length < 2) return null;
     const shuffled = [...source].sort(() => Math.random() - 0.5);
-    if (shuffled.length < 2) return null;
-    const first = shuffled[0];
-    const second = shuffled.find((candidate) => candidate.id !== first.id) || shuffled[1];
-    return [first, second] as [Candidato, Candidato];
+    return [shuffled[0], shuffled[1]] as [Candidato, Candidato];
   };
 
   useEffect(() => {
     void fetchCandidates();
-  }, [selectedUf]);
+  }, [selectedUf, selectedMunicipio]);
 
   useEffect(() => {
     if (loading) return;

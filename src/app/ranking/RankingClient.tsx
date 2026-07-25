@@ -51,6 +51,27 @@ function RankingContent() {
     async function loadRanking() {
       setLoading(true);
 
+      const cargosPorEscopo: { [key: string]: string[] } = {
+        nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+        estadual: [
+          'DEPUTADO ESTADUAL',
+          'DEPUTADO FEDERAL',
+          'GOVERNADOR',
+          'VICE-GOVERNADOR',
+          'SENADOR',
+        ],
+        municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+      };
+
+      let cargos: string[] = [];
+      if (selectedUf === 'BR') {
+        cargos = cargosPorEscopo.nacional;
+      } else if (selectedMunicipio) {
+        cargos = cargosPorEscopo.municipal;
+      } else {
+        cargos = cargosPorEscopo.estadual;
+      }
+
       if (highlightedId) {
         const relatedRows = [];
         const batchSize = 1000;
@@ -85,6 +106,7 @@ function RankingContent() {
           if (selectedUf !== 'BR' && selectedMunicipio) {
             highlightedQuery = highlightedQuery.eq('municipio', selectedMunicipio);
           }
+          highlightedQuery = highlightedQuery.in('cargo', cargos);
 
           const { data, error } = await highlightedQuery;
 
@@ -163,6 +185,7 @@ function RankingContent() {
             )
           `)
           .in('candidaturas.ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+          .in('candidaturas.cargo', cargos)
           .order('elo_score', { ascending: false })
           .range(from, from + 9);
 
@@ -240,6 +263,7 @@ function RankingContent() {
       if (selectedMunicipio) {
         query = query.eq('municipio', selectedMunicipio);
       }
+      query = query.in('cargo', cargos);
 
       const { data, error } = await query;
 

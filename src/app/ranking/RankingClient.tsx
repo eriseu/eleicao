@@ -41,7 +41,7 @@ function RankingContent() {
       const uniqueMunicipios = Array.from(
         new Set((data || [])
           .map((item) => item.municipio?.trim())
-          .filter((m): m is string => Boolean(m) && m.toUpperCase() !== selectedUf.toUpperCase()))) // Corrected line: Removed one ')'
+          .filter((m): m is string => Boolean(m) && m.toUpperCase() !== selectedUf.toUpperCase()))
       ).sort();
       setMunicipios(uniqueMunicipios);
     }

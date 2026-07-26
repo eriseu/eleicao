@@ -6,25 +6,30 @@ import './globals.css';
 import FooterMenu from '@/components/layout/BottomNav';
 const inter = Inter({ subsets: ['latin'] });
 
-const siteUrl = 'https://politica.centraleti.com.br';
+const siteUrl = new URL('https://politica.centraleti.com.br');
 const siteTitle = 'Duelo Político - Quem te representa melhor?';
 const siteDescription = 'Compare candidatos e veja quem está mais alinhado com suas escolhas. Participe do ranking e compartilhe seus duelos.';
-const ogImageUrl = `${siteUrl}/politica.centraleti.com.br.png`;
+const ogImageUrl = new URL('/politica.centraleti.com.br.png', siteUrl).toString();
 
 export const metadata: Metadata = {
+  metadataBase: siteUrl,
   title: siteTitle,
   description: siteDescription,
+  keywords: ['eleições', 'política', 'duelo', 'comparação', 'candidatos', 'ranking'],
+  authors: [{ name: 'Central IT', url: 'https://centraleti.com.br' }],
   openGraph: {
     title: siteTitle,
     description: siteDescription,
-    url: siteUrl,
+    url: siteUrl.toString(),
     siteName: 'Duelo Político',
     images: [
       {
         url: ogImageUrl,
+        secure_url: ogImageUrl,
         width: 1200,
         height: 630,
         alt: 'Arte promocional do Duelo Político',
+        type: 'image/png',
       },
     ],
     locale: 'pt_BR',
@@ -34,7 +39,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: siteTitle,
     description: siteDescription,
-    images: [ogImageUrl],
+    images: [ogImageUrl], // Must be an absolute URL
   },
 };
 

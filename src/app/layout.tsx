@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     images: [
       {
         url: ogImageUrl,
-        secure_url: ogImageUrl,
+        secureUrl: ogImageUrl,
         width: 1200,
         height: 630,
         alt: 'Arte promocional do Duelo Político',
@@ -50,14 +50,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <head>
+      <head />
+      <body className={inter.className}>
         {/* Google AdSense */}
         <Script
           async
           src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-${process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID}`}
           crossOrigin="anonymous"
           strategy="afterInteractive"
-        /> 
+        />
         {/* Google Analytics */}
         <Script
           strategy="afterInteractive"
@@ -69,8 +70,6 @@ export default function RootLayout({
             gtag('js', new Date());
             gtag('config', '${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}');`}
         </Script>
-      </head>
-      <body className={inter.className}>
         <main>
           {children}
         </main>

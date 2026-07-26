@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
@@ -23,6 +24,7 @@ function getStateNameFromUf(uf: string): string {
 }
 
 function RankingContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedUf = searchParams.get('uf')?.toUpperCase();
   const initialUf = requestedUf && AVAILABLE_UFS.some(uf => uf === requestedUf)
@@ -342,22 +344,27 @@ function RankingContent() {
     });
   }, [highlightedId, loading, ranking]);
 
+  // Sincroniza a URL com os filtros selecionados
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedUf && selectedUf !== 'BR') params.set('uf', selectedUf);
+    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
+    router.replace(`/ranking?${params.toString()}`);
+  }, [selectedUf, selectedMunicipio, router]);
+
   useEffect(() => {
     setPage(0);
   }, [selectedUf, selectedMunicipio]);
 
-  const filteredByRegion = ranking.filter((cand) => {
-    if (selectedUf !== 'BR' && cand.uf !== selectedUf) return false;
-    if (selectedMunicipio && cand.municipio !== selectedMunicipio) return false;
-    return true;
-  });
-
   const handleShare = async () => {
     const region = selectedMunicipio || getStateNameFromUf(selectedUf);
+    const shareUrl = new URL(window.location.href);
+    shareUrl.searchParams.delete('highlight'); // Remove o destaque do link compartilhado
+
     const shareData = {
       title: 'Ranking Duelo Político',
       text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
-      url: window.location.href,
+      url: shareUrl.toString(),
     };
 
     try {
@@ -461,8 +468,8 @@ function RankingContent() {
               <div className="rounded-[32px] border border-dashed border-slate-700 bg-slate-900/80 p-8 text-center text-sm text-slate-400">
                 Carregando candidatos...
               </div>
-            ) : filteredByRegion.length > 0 ? (
-              filteredByRegion.map((cand, index) => (
+            ) : ranking.length > 0 ? (
+              ranking.map((cand, index) => (
                 <Link
                   href={`/candidato/${cand.id}`}
                   key={cand.id}

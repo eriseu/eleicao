@@ -46,12 +46,12 @@ export default function PlacarEleicaoEmbedPage() {
           <div className="duel-selectors">
             <select
               id="candidate-a"
-              onChange={(e) =>
+              onChange={(e) => {
                 (window as any).trackWidgetEvent('select_candidate_duel', {
                   candidate_name: e.target.value,
                   position: 'left',
-                })
-              }
+                });
+              }}
             >
               <option>Selecione o 1º candidato</option>
               {/* Opções de candidatos serão populadas dinamicamente aqui */}
@@ -60,12 +60,12 @@ export default function PlacarEleicaoEmbedPage() {
             </select>
             <select
               id="candidate-b"
-              onChange={(e) =>
+              onChange={(e) => {
                 (window as any).trackWidgetEvent('select_candidate_duel', {
                   candidate_name: e.target.value,
                   position: 'right',
-                })
-              }
+                });
+              }}
             >
               <option>Selecione o 2º candidato</option>
               {/* Opções de candidatos serão populadas dinamicamente aqui */}
@@ -82,7 +82,10 @@ export default function PlacarEleicaoEmbedPage() {
         <div id="view-ranking" className="widget-view">
           <h2>Ranking Regional</h2>
           <div className="ranking-filters">
-            <select id="filter-state" onChange={(e) => (window as any).trackWidgetEvent('filter_state', { state_name: e.target.value })}>
+            <select
+              id="filter-state"
+              onChange={(e) => (window as any).trackWidgetEvent('filter_state', { state_name: e.target.value })}
+            >
               <option>Selecione o Estado</option>
               {/* Opções de estados serão populadas dinamicamente aqui */}
               <option value="SP">São Paulo</option>

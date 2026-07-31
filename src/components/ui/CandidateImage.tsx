@@ -11,7 +11,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
   // 🛡️ Extração resiliente: Funciona com o objeto tratado/achatado E com o objeto bruto do Supabase
   const candidatura = 
     candidato.ultima_candidatura || 
-    candidato.candidaturas?.find((c: any) => c.ano_eleicao === 2024) || 
+    candidato.candidaturas?.find((c: any) => c.ano_eleicao === 2026) || 
     candidato.candidaturas?.[0];
   
   // Tenta pegar o nome do arquivo de foto de onde quer que ele esteja guardado

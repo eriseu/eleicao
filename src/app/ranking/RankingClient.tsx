@@ -186,32 +186,19 @@ function RankingContent() {
       }
 
       if (selectedUf === 'BR') {
-        const from = page * 10;
+        const from = page * 50;
+        const to = from + 49;
+
         const { data, error } = await supabase
-          .from('perfis_candidatos')
+          .from('candidaturas')
           .select(`
-            id,
-            nome_completo,
-            cpf,
-            titulo_eleitoral,
-            created_at,
-            elo_score,
-            matches_count,
-            candidaturas!perfil_id!inner (
-              foto,
-              nome_urna,
-              partido,
-              cargo,
-              ano_eleicao,
-              uf,
-              municipio,
-              sq_candidato
-            )
+            foto, nome_urna, partido, cargo, ano_eleicao, uf, municipio, sq_candidato,
+            perfis_candidatos!inner(id, nome_completo, cpf, titulo_eleitoral, created_at, elo_score, matches_count)
           `)
-          .in('candidaturas.ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-          .in('candidaturas.cargo', cargos)
-          .order('elo_score', { ascending: false })
-          .range(from, from + 9);
+          .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+          .in('cargo', cargos)
+          .order('elo_score', { referencedTable: 'perfis_candidatos', ascending: false, nullsFirst: false })
+          .range(from, to);
 
         if (error || !data) {
           console.error('Erro ao carregar ranking nacional:', error?.message);
@@ -219,36 +206,39 @@ function RankingContent() {
           setLoading(false);
           return;
         }
-
-        const mappedProfiles: Candidato[] = data.flatMap((perfil) => {
-          const candidaturaAtiva = [...perfil.candidaturas].sort(
-            (a, b) => (b.ano_eleicao || 0) - (a.ano_eleicao || 0)
-          )[0];
-          if (!candidaturaAtiva) return [];
+        
+        const perfisIncluidos = new Set<string>();
+        const mappedData: Candidato[] = data.flatMap((candidatura) => {
+          const perfil = candidatura.perfis_candidatos;
+          if (!perfil || perfisIncluidos.has(perfil.id)) {
+            return [];
+          }
+          perfisIncluidos.add(perfil.id);
 
           return [{
             id: perfil.id,
             nome_completo: perfil.nome_completo,
             cpf: perfil.cpf,
             titulo_eleitoral: perfil.titulo_eleitoral,
-            created_at: perfil.created_at,
+            created_at: perfil.created_at as string,
             elo_score: perfil.elo_score || 0,
             matches_count: perfil.matches_count || 0,
-            nome_urna: candidaturaAtiva.nome_urna || perfil.nome_completo,
-            partido: candidaturaAtiva.partido || 'S/P',
-            cargo: candidaturaAtiva.cargo,
-            uf: candidaturaAtiva.uf,
-            municipio: candidaturaAtiva.municipio,
+            nome_urna: candidatura.nome_urna || perfil.nome_completo,
+            partido: candidatura.partido || 'S/P',
+            cargo: candidatura.cargo,
+            uf: candidatura.uf,
+            municipio: candidatura.municipio,
             ultima_candidatura: {
-              ...candidaturaAtiva,
+              ...candidatura,
               perfil_id: perfil.id,
-              created_at: perfil.created_at,
-              sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
+              created_at: perfil.created_at as string,
+              sq_candidato: candidatura.sq_candidato || candidatura.foto,
             },
           }];
         });
-
-        setRanking(mappedProfiles.sort((a, b) => b.elo_score - a.elo_score));
+        
+        const sortedData = mappedData.sort((a, b) => b.elo_score - a.elo_score);
+        setRanking(sortedData.slice(0, 10));
         setLoading(false);
         return;
       }

@@ -291,24 +291,31 @@ function RankingContent() {
         perfisIncluidos.add(perfil.id);
 
         return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score || 0,
-          matches_count: perfil.matches_count || 0,
-          nome_urna: candidaturaAtiva.nome_urna || perfil.nome_completo,
-          partido: candidaturaAtiva.partido || 'S/P',
-          cargo: candidaturaAtiva.cargo,
-          uf: candidaturaAtiva.uf,
-          municipio: candidaturaAtiva.municipio,
-          ultima_candidatura: {
-            ...candidaturaAtiva,
-            perfil_id: perfil.id,
+            id: perfil.id,
+            nome_completo: perfil.nome_completo,
+            cpf: perfil.cpf,
+            titulo_eleitoral: perfil.titulo_eleitoral,
             created_at: perfil.created_at,
-            sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
-          },
+
+            nome_urna: candidatura.nome_urna || perfil.nome_completo,
+            partido: candidatura.partido || 'S/P',
+            cargo: candidatura.cargo,
+            ano_eleicao: candidatura.ano_eleicao,
+            uf: candidatura.uf,
+            municipio: candidatura.municipio,
+
+            elo_score: perfil.elo_score ?? 1200,
+            matches_count: perfil.matches_count ?? 0,
+
+            foto: candidatura.foto,
+
+            ultima_candidatura: {
+                ...candidatura,
+                perfil_id: perfil.id,
+                created_at: perfil.created_at,
+                sq_candidato:
+                    candidatura.sq_candidato || candidatura.foto,
+            },
         }];
       });
 

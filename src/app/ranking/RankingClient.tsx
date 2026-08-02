@@ -208,33 +208,27 @@ function RankingContent() {
         }
         
         const perfisIncluidos = new Set<string>();
-        const mappedData: Candidato[] = data.flatMap((candidatura) => {
-          const perfil = candidatura.perfis_candidatos;
-          if (!perfil || perfisIncluidos.has(perfil.id)) {
-            return [];
-          }
-          perfisIncluidos.add(perfil.id);
+        const mappedData: Candidato[] = data.flatMap((candidatura: any) => {
+            // Garante que o perfil seja tratado corretamente, seja objeto ou o primeiro item de um array
+            const perfilRaw = candidatura.perfis_candidatos;
+            const perfil = Array.isArray(perfilRaw) ? perfilRaw[0] : perfilRaw;
 
-          return [{
-            id: perfil.id,
-            nome_completo: perfil.nome_completo,
-            cpf: perfil.cpf,
-            titulo_eleitoral: perfil.titulo_eleitoral,
-            created_at: perfil.created_at as string,
-            elo_score: perfil.elo_score || 0,
-            matches_count: perfil.matches_count || 0,
-            nome_urna: candidatura.nome_urna || perfil.nome_completo,
-            partido: candidatura.partido || 'S/P',
-            cargo: candidatura.cargo,
-            uf: candidatura.uf,
-            municipio: candidatura.municipio,
-            ultima_candidatura: {
-              ...candidatura,
-              perfil_id: perfil.id,
-              created_at: perfil.created_at as string,
-              sq_candidato: candidatura.sq_candidato || candidatura.foto,
-            },
-          }];
+            if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
+              return [];
+            }
+            perfisIncluidos.add(perfil.id);
+
+            return [{
+              id: perfil.id,
+              nome_urna: candidatura.nome_urna || perfil.nome_completo,
+              partido: candidatura.partido,
+              cargo: candidatura.cargo,
+              ano_eleicao: candidatura.ano_eleicao,
+              uf: candidatura.uf,
+              elo_score: perfil.elo_score ?? 1200,
+              matches_count: perfil.matches_count ?? 0,
+              foto: candidatura.foto
+            }];
         });
         
         const sortedData = mappedData.sort((a, b) => b.elo_score - a.elo_score);

@@ -146,7 +146,7 @@ function RankingContent() {
         }
 
         const includedProfiles = new Set<string>();
-        const relatedRanking: Candidato[] = relatedRows.flatMap((candidatura) => {
+        const mappedData = data.flatMap((candidatura: any) => {
           const perfil = Array.isArray(candidatura.perfis_candidatos)
             ? candidatura.perfis_candidatos[0]
             : candidatura.perfis_candidatos;

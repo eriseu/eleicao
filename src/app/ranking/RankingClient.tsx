@@ -96,7 +96,7 @@ function RankingContent() {
         cargos = cargosPorEscopo.estadual;
       }
 
-      if (highlightedId) {
+if (highlightedId) {
         const relatedRows = [];
         const batchSize = 1000;
 
@@ -132,21 +132,21 @@ function RankingContent() {
           }
           highlightedQuery = highlightedQuery.in('cargo', cargos);
 
-          const { data, error } = await highlightedQuery;
+          const { data: batchData, error } = await highlightedQuery;
 
-          if (error || !data) {
+          if (error || !batchData) {
             console.error('Erro ao carregar ranking relacionado:', error?.message);
             setRanking([]);
             setLoading(false);
             return;
           }
 
-          relatedRows.push(...data);
-          if (data.length < batchSize) break;
+          relatedRows.push(...batchData);
+          if (batchData.length < batchSize) break;
         }
 
         const includedProfiles = new Set<string>();
-        const mappedData = data.flatMap((candidatura: any) => {
+        const relatedRanking: Candidato[] = relatedRows.flatMap((candidatura: any) => {
           const perfil = Array.isArray(candidatura.perfis_candidatos)
             ? candidatura.perfis_candidatos[0]
             : candidatura.perfis_candidatos;
@@ -166,6 +166,7 @@ function RankingContent() {
             cargo: candidatura.cargo,
             uf: candidatura.uf,
             municipio: candidatura.municipio,
+            foto: candidatura.foto,
             ultima_candidatura: {
               ...candidatura,
               perfil_id: perfil.id,

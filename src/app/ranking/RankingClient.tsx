@@ -337,7 +337,7 @@ function RankingContent() {
   // Sincroniza a URL com os filtros selecionados
   useEffect(() => {
     const params = new URLSearchParams();
-    if (selectedUf && selectedUf !== 'BR') params.set('uf', selectedUf);
+    if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
     router.replace(`/ranking?${params.toString()}`);
   }, [selectedUf, selectedMunicipio, router]);

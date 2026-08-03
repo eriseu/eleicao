@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
@@ -22,6 +22,29 @@ const ufToStateName: { [key: string]: string } = {
 function getStateNameFromUf(uf: string): string {
   return ufToStateName[uf.toUpperCase()] || uf;
 }
+
+const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
+  nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+  estadual: [
+    'DEPUTADO ESTADUAL',
+    'DEPUTADO FEDERAL',
+    'GOVERNADOR',
+    'VICE-GOVERNADOR',
+    'SENADOR',
+  ],
+  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+};
+
+const ITEMS_PER_PAGE = 10;
+
+type CandidaturaData = {
+  foto: string;
+  nome_urna: string;
+  partido: string;
+  cargo: string;
+  perfis_candidatos: any; // Supabase join type can be complex
+  [key: string]: any;
+};
 
 function RankingContent() {
   const router = useRouter();
@@ -66,267 +89,144 @@ function RankingContent() {
     void loadMunicipios();
   }, [selectedUf]);
 
+  const getCargosPorEscopo = useCallback(() => {
+    if (selectedUf === 'BR') {
+      return CARGOS_POR_ESCOPO.nacional;
+    }
+    if (selectedMunicipio) {
+      const stateName = getStateNameFromUf(selectedUf);
+      // Se o município selecionado não for a capital (com o mesmo nome do estado), busca cargos municipais.
+      if (selectedMunicipio.localeCompare(stateName, 'pt-BR', { sensitivity: 'base' }) !== 0) {
+        return CARGOS_POR_ESCOPO.municipal;
+      }
+    }
+    return CARGOS_POR_ESCOPO.estadual;
+  }, [selectedUf, selectedMunicipio]);
+
+  const processCandidaturas = (data: CandidaturaData[]): Candidato[] => {
+    const perfisIncluidos = new Set<string>();
+    return data.flatMap((candidatura) => {
+      const perfilRaw = candidatura.perfis_candidatos;
+      const perfil = Array.isArray(perfilRaw) ? perfilRaw[0] : perfilRaw;
+
+      if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
+        return [];
+      }
+      perfisIncluidos.add(perfil.id);
+
+      return [{
+        id: perfil.id,
+        nome_completo: perfil.nome_completo,
+        cpf: perfil.cpf,
+        titulo_eleitoral: perfil.titulo_eleitoral,
+        created_at: perfil.created_at,
+        elo_score: perfil.elo_score ?? 1200,
+        matches_count: perfil.matches_count ?? 0,
+        nome_urna: candidatura.nome_urna || perfil.nome_completo,
+        partido: candidatura.partido || 'S/P',
+        cargo: candidatura.cargo,
+        ano_eleicao: candidatura.ano_eleicao,
+        uf: candidatura.uf,
+        municipio: candidatura.municipio,
+        foto: candidatura.foto,
+        ultima_candidatura: {
+          ...candidatura,
+          perfil_id: perfil.id,
+          created_at: perfil.created_at,
+          sq_candidato: candidatura.sq_candidato || candidatura.foto,
+        },
+      }];
+    });
+  };
+
+  const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
+    const from = currentPage * ITEMS_PER_PAGE;
+    const to = from + ITEMS_PER_PAGE - 1;
+
+    const selectStatement = `
+      foto, nome_urna, partido, cargo, ano_eleicao, uf, municipio, sq_candidato,
+      perfis_candidatos!perfil_id(id, nome_completo, cpf, titulo_eleitoral, created_at, elo_score, matches_count)
+    `;
+
+    let query = supabase
+        .from('candidaturas')
+        .select(selectStatement)
+        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+        .in('cargo', cargos)
+        .order('elo_score', { referencedTable: 'perfis_candidatos', ascending: false, nullsFirst: false })
+        .range(from, to);
+
+    if (selectedUf !== 'BR') {
+      query = query.eq('uf', selectedUf);
+    }
+    if (selectedMunicipio) {
+      query = query.eq('municipio', selectedMunicipio);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Erro ao carregar ranking:', error.message);
+      return [];
+    }
+
+    return processCandidaturas(data || []);
+  }, [selectedUf, selectedMunicipio]);
+
   useEffect(() => {
-    async function loadRanking() {
+    const loadRanking = async () => {
       setLoading(true);
+      const cargos = getCargosPorEscopo();
+      let targetPage = page;
 
-      const cargosPorEscopo: { [key: string]: string[] } = {
-        nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
-        estadual: [
-          'DEPUTADO ESTADUAL',
-          'DEPUTADO FEDERAL',
-          'GOVERNADOR',
-          'VICE-GOVERNADOR',
-          'SENADOR',
-        ],
-        municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
-      };
+      if (highlightedId) {
+        // Otimização: Em vez de buscar todos, buscamos a posição do candidato.
+        // Isso pode ser feito com uma RPC no Supabase para melhor performance.
+        // Por simplicidade aqui, vamos buscar a posição e depois a página.
+        const { data: highlightedProfile, error: profileError } = await supabase
+          .from('perfis_candidatos')
+          .select('elo_score')
+          .eq('id', highlightedId)
+          .single();
 
-      let cargos: string[] = [];
-      if (selectedUf === 'BR') {
-        cargos = cargosPorEscopo.nacional;
-      } else if (selectedMunicipio) {
-        const stateName = getStateNameFromUf(selectedUf);
-        if (selectedMunicipio.localeCompare(stateName, 'pt-BR', { sensitivity: 'base' }) !== 0) {
-          cargos = cargosPorEscopo.municipal;
-        } else {
-          cargos = cargosPorEscopo.estadual;
-        }
-      }  else {
-        cargos = cargosPorEscopo.estadual;
-      }
-
-if (highlightedId) {
-        const relatedRows = [];
-        const batchSize = 1000;
-
-        for (let from = 0; ; from += batchSize) {
-          let highlightedQuery = supabase
-            .from('candidaturas')
-            .select(`
-              foto,
-              nome_urna,
-              partido,
-              cargo,
-              ano_eleicao,
-              uf,
-              municipio,
-              sq_candidato,
-              perfis_candidatos!perfil_id (
-                id,
-                nome_completo,
-                cpf,
-                titulo_eleitoral,
-                created_at,
-                elo_score,
-                matches_count
-              )
-            `)
-            .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-            .eq('uf', selectedUf)
-            .order('ano_eleicao', { ascending: false })
-            .range(from, from + batchSize - 1);
-
-          if (selectedUf !== 'BR' && selectedMunicipio) {
-            highlightedQuery = highlightedQuery.eq('municipio', selectedMunicipio);
-          }
-          highlightedQuery = highlightedQuery.in('cargo', cargos);
-
-          const { data: batchData, error } = await highlightedQuery;
-
-          if (error || !batchData) {
-            console.error('Erro ao carregar ranking relacionado:', error?.message);
-            setRanking([]);
-            setLoading(false);
-            return;
-          }
-
-          relatedRows.push(...batchData);
-          if (batchData.length < batchSize) break;
-        }
-
-        const includedProfiles = new Set<string>();
-        const relatedRanking: Candidato[] = relatedRows.flatMap((candidatura: any) => {
-          const perfil = Array.isArray(candidatura.perfis_candidatos)
-            ? candidatura.perfis_candidatos[0]
-            : candidatura.perfis_candidatos;
-          if (!perfil || includedProfiles.has(perfil.id)) return [];
-          includedProfiles.add(perfil.id);
-
-          return [{
-            id: perfil.id,
-            nome_completo: perfil.nome_completo,
-            cpf: perfil.cpf,
-            titulo_eleitoral: perfil.titulo_eleitoral,
-            created_at: perfil.created_at,
-            elo_score: perfil.elo_score || 0,
-            matches_count: perfil.matches_count || 0,
-            nome_urna: candidatura.nome_urna || perfil.nome_completo,
-            partido: candidatura.partido || 'S/P',
-            cargo: candidatura.cargo,
-            uf: candidatura.uf,
-            municipio: candidatura.municipio,
-            foto: candidatura.foto,
-            ultima_candidatura: {
-              ...candidatura,
-              perfil_id: perfil.id,
-              created_at: perfil.created_at,
-              sq_candidato: candidatura.sq_candidato || candidatura.foto,
-            },
-          }];
-        }).sort((a, b) =>
-          b.elo_score - a.elo_score || a.nome_completo.localeCompare(b.nome_completo, 'pt-BR')
-        );
-
-        const highlightedPosition = relatedRanking.findIndex((candidate) => candidate.id === highlightedId);
-        const targetPage = highlightedPosition >= 0 ? Math.floor(highlightedPosition / 10) : 0;
-        setPage(targetPage);
-        setRanking(relatedRanking.slice(targetPage * 10, targetPage * 10 + 10));
-        setLoading(false);
-        return;
-      }
-
-      if (selectedUf === 'BR') {
-        const from = page * 50;
-        const to = from + 49;
-
-        const { data, error } = await supabase
-          .from('candidaturas')
-          .select(`
-            foto, nome_urna, partido, cargo, ano_eleicao, uf, municipio, sq_candidato,
-            perfis_candidatos!inner(id, nome_completo, cpf, titulo_eleitoral, created_at, elo_score, matches_count)
-          `)
-          .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-          .in('cargo', cargos)
-          .order('elo_score', { referencedTable: 'perfis_candidatos', ascending: false, nullsFirst: false })
-          .range(from, to);
-
-        if (error || !data) {
-          console.error('Erro ao carregar ranking nacional:', error?.message);
-          setRanking([]);
+        if (profileError || !highlightedProfile) {
+          // Se não encontrar o perfil, carrega a primeira página normalmente.
+          setHighlightedId('');
+          const rankingData = await fetchRankingData(0, cargos);
+          setRanking(rankingData);
           setLoading(false);
           return;
         }
-        
-        const perfisIncluidos = new Set<string>();
-        const mappedData: Candidato[] = data.flatMap((candidatura: any) => {
-            // Garante que o perfil seja tratado corretamente, seja objeto ou o primeiro item de um array
-            const perfilRaw = candidatura.perfis_candidatos;
-            const perfil = Array.isArray(perfilRaw) ? perfilRaw[0] : perfilRaw;
 
-            if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
-              return [];
-            }
-            perfisIncluidos.add(perfil.id);
+        let countQuery = supabase
+          .from('perfis_candidatos')
+          .select('id', { count: 'exact', head: true })
+          .gt('elo_score', highlightedProfile.elo_score);
 
-            return [{
-              id: perfil.id,
-              nome_urna: candidatura.nome_urna || perfil.nome_completo,
-              partido: candidatura.partido,
-              cargo: candidatura.cargo,
-              ano_eleicao: candidatura.ano_eleicao,
-              uf: candidatura.uf,
-              elo_score: perfil.elo_score ?? 1200,
-              matches_count: perfil.matches_count ?? 0,
-              foto: candidatura.foto
-            }];
-        });
-        
-        const sortedData = mappedData.sort((a, b) => b.elo_score - a.elo_score);
-        setRanking(sortedData.slice(0, 10));
-        setLoading(false);
-        return;
+        const { count, error: countError } = await countQuery;
+
+        if (countError) {
+          console.error('Erro ao calcular posição:', countError.message);
+          // Fallback para a primeira página
+          const rankingData = await fetchRankingData(0, cargos);
+          setRanking(rankingData);
+          setLoading(false);
+          return;
+        }
+
+        const position = count || 0;
+        targetPage = Math.floor(position / ITEMS_PER_PAGE);
+        setPage(targetPage);
       }
 
-      const to = (page + 1) * 50 - 1;
-
-      let query = supabase
-        .from('candidaturas')
-        .select(`
-          foto,
-          nome_urna,
-          partido,
-          cargo,
-          ano_eleicao,
-          uf,
-          municipio,
-          sq_candidato,
-          perfis_candidatos!perfil_id (
-            id,
-            nome_completo,
-            cpf,
-            titulo_eleitoral,
-            created_at,
-            elo_score,
-            matches_count
-          )
-        `)
-        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-        .order('elo_score', { referencedTable: 'perfis_candidatos', ascending: false })
-        .order('ano_eleicao', { ascending: false })
-        .range(0, to);
-
-      if (selectedUf !== 'BR') {
-        query = query.eq('uf', selectedUf);
-      }
-      if (selectedMunicipio) {
-        query = query.eq('municipio', selectedMunicipio);
-      }
-      query = query.in('cargo', cargos);
-
-      const { data, error } = await query;
-
-      if (error || !data) {
-        console.error('Erro ao carregar ranking:', error?.message);
-        setRanking([]);
-        setLoading(false);
-        return;
-      }
-
-      const perfisIncluidos = new Set<string>();
-      const mappedData: Candidato[] = data.flatMap((candidaturaAtiva) => {
-        const perfil = Array.isArray(candidaturaAtiva.perfis_candidatos)
-          ? candidaturaAtiva.perfis_candidatos[0]
-          : candidaturaAtiva.perfis_candidatos;
-        if (!perfil || perfisIncluidos.has(perfil.id)) return [];
-        perfisIncluidos.add(perfil.id);
-
-        return [{
-            id: perfil.id,
-            nome_completo: perfil.nome_completo,
-            cpf: perfil.cpf,
-            titulo_eleitoral: perfil.titulo_eleitoral,
-            created_at: perfil.created_at,
-
-            nome_urna: candidatura.nome_urna || perfil.nome_completo,
-            partido: candidatura.partido || 'S/P',
-            cargo: candidatura.cargo,
-            ano_eleicao: candidatura.ano_eleicao,
-            uf: candidatura.uf,
-            municipio: candidatura.municipio,
-
-            elo_score: perfil.elo_score ?? 1200,
-            matches_count: perfil.matches_count ?? 0,
-
-            foto: candidatura.foto,
-
-            ultima_candidatura: {
-                ...candidatura,
-                perfil_id: perfil.id,
-                created_at: perfil.created_at,
-                sq_candidato:
-                    candidatura.sq_candidato || candidatura.foto,
-            },
-        }];
-      });
-
-      const sortedData = mappedData.sort((a, b) => b.elo_score - a.elo_score);
-      setRanking(sortedData.slice(page * 10, page * 10 + 10));
+      const rankingData = await fetchRankingData(targetPage, cargos);
+      setRanking(rankingData);
       setLoading(false);
-    }
+    };
 
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     loadRanking();
-  }, [highlightedId, page, selectedUf, selectedMunicipio]);
+  }, [highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
   useEffect(() => {
     if (!highlightedId || loading) return;
@@ -482,7 +382,7 @@ if (highlightedId) {
                         {cand.id === highlightedId && (
                           <span className="hidden rounded-full bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase text-slate-950 sm:inline">Destaque</span>
                         )}
-                        <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * 10 + index + 1}º</span>
+                        <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * ITEMS_PER_PAGE + index + 1}º</span>
                       </div>
                     </div>
                     <p className="mt-1 text-sm text-slate-400">{cand.cargo} · {cand.partido}</p>
@@ -511,7 +411,7 @@ if (highlightedId) {
             </button>
             <span className="font-bold text-white">Página {page + 1}</span>
             <button
-              disabled={ranking.length < 10}
+              disabled={ranking.length < ITEMS_PER_PAGE}
               onClick={() => setPage((p) => p + 1)}
               className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
             >

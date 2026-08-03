@@ -204,7 +204,16 @@ function RankingContent() {
         let countQuery = supabase
           .from('perfis_candidatos')
           .select('id', { count: 'exact', head: true })
+          .in('candidaturas.cargo', cargos)
           .gt('elo_score', highlightedProfile.elo_score);
+
+        if (selectedUf !== 'BR') {
+          countQuery = countQuery.eq('candidaturas.uf', selectedUf);
+        }
+
+        if (selectedMunicipio) {
+          countQuery = countQuery.eq('candidaturas.municipio', selectedMunicipio);
+        }
 
         const { count, error: countError } = await countQuery;
 

@@ -136,7 +136,7 @@ function RankingContent() {
           ...candidatura,
           perfil_id: perfil.id,
           created_at: perfil.created_at,
-          sq_candidato: candidatura.sq_candidato || candidatura.foto,
+          sq_candidato: parseInt(candidatura.sq_candidato, 10) || 0,
         },
       }];
     });

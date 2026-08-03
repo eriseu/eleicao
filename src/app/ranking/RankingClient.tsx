@@ -42,8 +42,11 @@ type CandidaturaData = {
   nome_urna: string;
   partido: string;
   cargo: string;
+  ano_eleicao: number;
+  uf: string;
+  municipio: string;
+  sq_candidato: string;
   perfis_candidatos: any; // Supabase join type can be complex
-  [key: string]: any;
 };
 
 function RankingContent() {

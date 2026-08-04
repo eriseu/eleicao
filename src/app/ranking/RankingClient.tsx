@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
@@ -37,18 +38,6 @@ const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
 
 const ITEMS_PER_PAGE = 10;
 
-type CandidaturaData = {
-  foto: string;
-  nome_urna: string;
-  partido: string;
-  cargo: string;
-  ano_eleicao: number;
-  uf: string;
-  municipio: string;
-  sq_candidato: string;
-  perfis_candidatos: any; // Supabase join type can be complex
-};
-
 function RankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,13 +62,14 @@ function RankingContent() {
     }
 
     async function loadMunicipios() {
-      const { data } = await supabase
-        .from('candidaturas')
-        .select('municipio')
-        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-        .eq('uf', selectedUf)
-        .not('municipio', 'is', null)
-        .limit(1000);
+      // Esta função agora deve chamar sua API no VPS
+      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/municipios?uf=${selectedUf}`);
+      if (!response.ok) {
+        console.error("Falha ao buscar municípios do VPS");
+        setMunicipios([]);
+        return;
+      }
+      const data = await response.json();
 
       const uniqueMunicipios = Array.from(
         new Set((data || [])
@@ -106,16 +96,16 @@ function RankingContent() {
     return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-  const processCandidaturas = (data: CandidaturaData[]): Candidato[] => {
+  const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
     const perfisIncluidos = new Set<string>();
-    return data.flatMap((candidatura) => {
-      const perfilRaw = candidatura.perfis_candidatos;
-      const perfil = Array.isArray(perfilRaw) ? perfilRaw[0] : perfilRaw;
-
+    return perfis.flatMap((perfil) => {
       if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
         return [];
       }
       perfisIncluidos.add(perfil.id);
+
+      const candidatura = candidaturas.find(c => c.perfil_id === perfil.id);
+      if (!candidatura) return [];
 
       return [{
         id: perfil.id,
@@ -136,7 +126,7 @@ function RankingContent() {
           ...candidatura,
           perfil_id: perfil.id,
           created_at: perfil.created_at,
-          sq_candidato: parseInt(candidatura.sq_candidato, 10) || 0,
+          sq_candidato: candidatura.sq_candidato,
         },
       }];
     });
@@ -146,34 +136,38 @@ function RankingContent() {
     const from = currentPage * ITEMS_PER_PAGE;
     const to = from + ITEMS_PER_PAGE - 1;
 
-    const selectStatement = `
-      foto, nome_urna, partido, cargo, ano_eleicao, uf, municipio, sq_candidato,
-      perfis_candidatos!perfil_id(id, nome_completo, cpf, titulo_eleitoral, created_at, elo_score, matches_count)
-    `;
-
     let query = supabase
-        .from('candidaturas')
-        .select(selectStatement)
-        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-        .in('cargo', cargos)
-        .order('elo_score', { referencedTable: 'perfis_candidatos', ascending: false, nullsFirst: false })
+        .from('perfis_candidatos')
+        .select('*, candidaturas!inner(ano_eleicao, uf, municipio, cargo)')
+        .in('candidaturas.ano_eleicao', [...ACTIVE_ELECTION_YEARS])
+        .in('candidaturas.cargo', cargos)
+        .order('elo_score', { ascending: false, nullsFirst: false })
         .range(from, to);
 
     if (selectedUf !== 'BR') {
-      query = query.eq('uf', selectedUf);
+      query = query.eq('candidaturas.uf', selectedUf);
     }
     if (selectedMunicipio) {
-      query = query.eq('municipio', selectedMunicipio);
+      query = query.eq('candidaturas.municipio', selectedMunicipio);
     }
 
-    const { data, error } = await query;
+    const { data: perfis, error } = await query;
 
     if (error) {
       console.error('Erro ao carregar ranking:', error.message);
       return [];
     }
+    if (!perfis || perfis.length === 0) {
+      return [];
+    }
 
-    return processCandidaturas(data || []);
+    const perfilIds = perfis.map(p => p.id);
+    const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+
+    // Apenas para manter a candidatura mais recente para o ranking
+    const candidaturasMaisRecentes = perfilIds.map(id => candidaturas.filter(c => c.perfil_id === id).sort((a,b) => b.ano_eleicao - a.ano_eleicao)[0]).filter(Boolean);
+
+    return processCandidaturas(perfis, candidaturasMaisRecentes);
   }, [selectedUf, selectedMunicipio]);
 
   useEffect(() => {
@@ -202,17 +196,19 @@ function RankingContent() {
         }
 
         let countQuery = supabase
-          .from('perfis_candidatos')
-          .select('id', { count: 'exact', head: true })
-          .in('candidaturas.cargo', cargos)
-          .gt('elo_score', highlightedProfile.elo_score);
+            .from('perfis_candidatos')
+            .select('id, candidaturas!inner(cargo, uf, municipio)', { count: 'exact', head: true })
+            .in('candidaturas.cargo', cargos)
+            .gt('elo_score', highlightedProfile.elo_score);
 
         if (selectedUf !== 'BR') {
-          countQuery = countQuery.eq('candidaturas.uf', selectedUf);
+            countQuery = countQuery.eq('candidaturas.uf', selectedUf);
         }
 
         if (selectedMunicipio) {
-          countQuery = countQuery.eq('candidaturas.municipio', selectedMunicipio);
+            // O filtro de join já é aplicado no select, mas podemos reforçar
+            // A forma mais limpa seria uma RPC, mas isso funciona.
+            countQuery = countQuery.eq('candidaturas.municipio', selectedMunicipio);
         }
 
         const { count, error: countError } = await countQuery;

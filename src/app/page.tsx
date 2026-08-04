@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import CandidateImage from '@/components/ui/CandidateImage';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
@@ -40,63 +41,50 @@ export default function Home() {
     }
 
     try {
-      const results = await Promise.all(
-        ACTIVE_ELECTION_YEARS.map((ano) => {
-          let query = supabase
-            .from('candidaturas')
-            .select(`
-            foto,
-            nome_urna,
-            partido,
-            cargo,
-            ano_eleicao,
-            uf,
-            municipio,
-            sq_candidato,
-            perfis_candidatos!perfil_id (
-              id,
-              nome_completo,
-              cpf,
-              titulo_eleitoral,
-              created_at,
-              elo_score,
-              matches_count
-            )
-          `)
-            .eq('ano_eleicao', ano);
+      // 1. Buscar perfis de candidatos do Supabase
+      let perfisQuery = supabase
+        .from('perfis_candidatos')
+        .select('*, candidaturas!inner(ano_eleicao, uf, municipio, cargo)')
+        .in('candidaturas.ano_eleicao', ACTIVE_ELECTION_YEARS)
+        .in('candidaturas.cargo', cargos)
+        .limit(1000);
 
-          if (selectedUf !== 'BR') {
-            query = query.eq('uf', selectedUf);
-          }
-          if (selectedMunicipio) {
-            query = query.eq('municipio', selectedMunicipio);
-          }
-          return query.in('cargo', cargos).limit(1000);
-        })
-      );
+      if (selectedUf !== 'BR') {
+        perfisQuery = perfisQuery.eq('candidaturas.uf', selectedUf);
+      }
+      if (selectedMunicipio) {
+        perfisQuery = perfisQuery.eq('candidaturas.municipio', selectedMunicipio);
+      }
 
-      const failedResult = results.find(({ error }) => error);
+      const { data: perfis, error: perfisError } = await perfisQuery;
 
-      if (failedResult?.error) {
-        console.error('Erro ao buscar matchup:', failedResult.error.message);
+      if (perfisError) {
+        console.error('Erro ao buscar perfis:', perfisError.message);
         return;
       }
 
-      const data = results.flatMap((result) => result.data || []);
-
-      if (!data || data.length < 1) {
+      if (!perfis || perfis.length < 1) {
         setCandidates([]);
         setPar(null);
         return;
       }
 
-      const perfisIncluidos = new Set<string>();
-      const mappedData: Candidato[] = data.flatMap((candidaturaAtiva) => {
-        const perfil = Array.isArray(candidaturaAtiva.perfis_candidatos)
-          ? candidaturaAtiva.perfis_candidatos[0]
-          : candidaturaAtiva.perfis_candidatos;
-        if (!perfil || perfisIncluidos.has(perfil.id)) return [];
-        perfisIncluidos.add(perfil.id);
+      const perfilIds = perfis.map(p => p.id);
+
+      // 2. Buscar candidaturas do VPS para os perfis encontrados
+      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+
+      // 3. Mapear e combinar os dados
+      const mappedData: Candidato[] = perfis.flatMap((perfil) => {
+        const candidaturasDoPerfil = candidaturas.filter(c => c.perfil_id === perfil.id);
+        if (candidaturasDoPerfil.length === 0) return [];
+
+        // Encontra a candidatura mais recente ou a primeira disponível
+        const candidaturaAtiva =
+          candidaturasDoPerfil.find((c) => ACTIVE_ELECTION_YEARS.includes(c.ano_eleicao)) ||
+          candidaturasDoPerfil.sort((a, b) => b.ano_eleicao - a.ano_eleicao)[0];
+
+        if (!candidaturaAtiva) return [];
 
         return [{
           id: perfil.id,
@@ -104,14 +92,14 @@ export default function Home() {
           cpf: perfil.cpf,
           titulo_eleitoral: perfil.titulo_eleitoral,
           created_at: perfil.created_at,
-          elo_score: perfil.elo_score,
+          elo_score: perfil.elo_score || 1200,
           ultima_candidatura: candidaturaAtiva
             ? {
                 ...candidaturaAtiva,
                 perfil_id: perfil.id,
                 created_at: perfil.created_at,
                 sq_candidato:
-                  candidaturaAtiva.sq_candidato ||
+                  candidaturaAtiva.sq_candidato?.toString() ||
                   candidaturaAtiva.foto
                     ?.replace(/_div\.(jpg|jpeg|png)/g, '')
                     .replace(/[A-Z]/g, ''),

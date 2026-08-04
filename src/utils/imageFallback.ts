@@ -11,11 +11,11 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   const urls: string[] = [];
 
   // Tenta pegar os dados da candidatura de onde eles estiverem disponíveis (achatado ou no objeto filho)
-  const candidatura = ultima_candidatura || (candidato as any).candidaturas?.[0] || (candidato as any);
+  const candidatura = ultima_candidatura || (candidato as any);
   
   const ano = candidatura.ano_eleicao || (candidato as any).ano;
   const uf = candidatura.uf;
-  const sq_candidato = candidatura.sq_candidato || candidatura.sq_candidaturas || (candidato as any).sq_candidato;
+  const sq_candidato = candidatura.sq_candidato || (candidato as any).sq_candidato;
 
   // Se o candidato realmente não tiver nenhuma candidatura vinculada, cai direto no avatar padrão
   if (!ano || !uf || !sq_candidato) {

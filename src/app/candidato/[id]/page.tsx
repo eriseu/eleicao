@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Navbar from "@/components/layout/Navbar";
 import Link from 'next/link';
@@ -33,13 +34,9 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           return;
         }
 
-        // 2️⃣ Chamada para a tabela secundária
-        const { data: listaCandidaturas } = await supabase
-          .from('candidaturas')
-          .select('*')
-          .eq('perfil_id', resolvedParams.id);
-
-        const candsArray = Array.isArray(listaCandidaturas) ? listaCandidaturas : [];
+        // 2️⃣ Chamada para a API do VPS
+        const candsArray = await fetchCandidaturasFromVPS([resolvedParams.id]);
+        
         const candidaturaAtiva = candsArray.find((c: any) => c.ano_eleicao === 2024) || candsArray[0];
 
         // 3️⃣ Agrupamento dos dados

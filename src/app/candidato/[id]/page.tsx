@@ -37,7 +37,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         // 2️⃣ Chamada para a API do VPS
         const candsArray = await fetchCandidaturasFromVPS([resolvedParams.id]);
         
-        const candidaturaAtiva = candsArray.find((c: any) => c.ano_eleicao === 2024) || candsArray[0];
+        const candidaturaAtiva = (candsArray as any[]).find((c: any) => c.ano_eleicao === 2024) || candsArray[0];
 
         // 3️⃣ Agrupamento dos dados
         setCandidato({

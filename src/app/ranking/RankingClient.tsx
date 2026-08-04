@@ -153,8 +153,8 @@ const fetchRankingData = useCallback(async (currentPage: number, cargos: string[
     const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
     const candidaturasProcessadas = perfilIds.map(id => {
-      const candsDoPerfil = candidaturas.filter(c => 
-        c.perfil_id === id && 
+      const candsDoPerfil = candidaturas.filter((c: any) => 
+        c.perfil_id === id &&
         (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
         cargos.includes(c.cargo) &&
         (selectedUf === 'BR' || c.uf === selectedUf) &&

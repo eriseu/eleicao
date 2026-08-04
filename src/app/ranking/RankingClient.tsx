@@ -130,44 +130,58 @@ function RankingContent() {
     });
   };
 
-const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
-    const from = currentPage * ITEMS_PER_PAGE;
-    const to = from + ITEMS_PER_PAGE - 1;
+  const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
+    try {
+      // 1. Busca os IDs filtrados diretamente na API VPS de acordo com a UF e Município
+      const queryParams = new URLSearchParams();
+      queryParams.append('uf', selectedUf);
+      cargos.forEach(cargo => queryParams.append('cargos', cargo));
+      if (selectedMunicipio) {
+        queryParams.append('municipio', selectedMunicipio);
+      }
 
-    // Otimização: Aplicar paginação diretamente no Supabase reduz drásticamente o uso de memória
-    const { data: perfis, error } = await supabase
+      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+      if (!response.ok) return [];
+
+      const perfilIdsVps: string[] = await response.json();
+      if (!perfilIdsVps || perfilIdsVps.length === 0) return [];
+
+      // 2. Consulta o Supabase ordenando por elo_score apenas para os IDs válidos da região
+      const from = currentPage * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      const { data: perfis, error } = await supabase
         .from('perfis_candidatos')
         .select('*')
+        .in('id', perfilIdsVps)
         .order('elo_score', { ascending: false, nullsFirst: false })
         .range(from, to);
 
-    if (error) {
-      console.error('Erro ao carregar ranking:', error.message);
+      if (error || !perfis || perfis.length === 0) return [];
+
+      const perfilIds = perfis.map(p => p.id);
+      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+
+      const candidaturasProcessadas = perfilIds.map(id => {
+        const candsDoPerfil = candidaturas.filter((c: any) => 
+          c.perfil_id === id &&
+          (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
+          cargos.some(cargoPermitido => cargoPermitido.toUpperCase() === c.cargo?.toUpperCase()) &&
+          (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
+          (!selectedMunicipio || c.municipio?.trim().toUpperCase() === selectedMunicipio.trim().toUpperCase())
+        );
+        return candsDoPerfil.sort((a: any, b: any) => b.ano_eleicao - a.ano_eleicao)[0];
+      }).filter(Boolean);
+
+      const perfisValidosIds = new Set(candidaturasProcessadas.map(c => c.perfil_id));
+      const perfisFiltrados = perfis.filter(p => perfisValidosIds.has(p.id));
+
+      return processCandidaturas(perfisFiltrados, candidaturasProcessadas);
+    } catch (err) {
+      console.error('Erro ao buscar dados do ranking:', err);
       return [];
     }
-    if (!perfis || perfis.length === 0) {
-      return [];
-    }
-
-    const perfilIds = perfis.map(p => p.id);
-    const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
-
-    const candidaturasProcessadas = perfilIds.map(id => {
-      const candsDoPerfil = candidaturas.filter((c: any) => 
-        c.perfil_id === id &&
-        (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
-        cargos.some(cargoPermitido => cargoPermitido.toUpperCase() === c.cargo?.toUpperCase()) &&
-        (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
-        (!selectedMunicipio || c.municipio?.trim().toUpperCase() === selectedMunicipio.trim().toUpperCase())
-      );
-      return candsDoPerfil.sort((a: any, b: any) => b.ano_eleicao - a.ano_eleicao)[0];
-    }).filter(Boolean);
-
-    const perfisValidosIds = new Set(candidaturasProcessadas.map(c => c.perfil_id));
-    const perfisFiltrados = perfis.filter(p => perfisValidosIds.has(p.id));
-
-    return processCandidaturas(perfisFiltrados, candidaturasProcessadas);
-  }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
+  }, [selectedUf, selectedMunicipio]);
 
   useEffect(() => {
     const loadRanking = async () => {

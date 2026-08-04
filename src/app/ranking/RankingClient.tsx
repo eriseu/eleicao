@@ -155,7 +155,7 @@ function RankingContent() {
     const candidaturasProcessadas = perfilIds.map(id => {
       const candsDoPerfil = candidaturas.filter(c => 
         c.perfil_id === id && 
-        ACTIVE_ELECTION_YEARS.includes(c.ano_eleicao) &&
+        (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
         cargos.includes(c.cargo) &&
         (selectedUf === 'BR' || c.uf === selectedUf) &&
         (!selectedMunicipio || c.municipio === selectedMunicipio)

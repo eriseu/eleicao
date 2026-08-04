@@ -160,7 +160,7 @@ const fetchRankingData = useCallback(async (currentPage: number, cargos: string[
         (selectedUf === 'BR' || c.uf === selectedUf) &&
         (!selectedMunicipio || c.municipio === selectedMunicipio)
       );
-      return candsDoPerfil.sort((a, b) => b.ano_eleicao - a.ano_eleicao)[0];
+      return candsDoPerfil.sort((a: any, b: any) => b.ano_eleicao - a.ano_eleicao)[0];
     }).filter(Boolean);
 
     const perfisValidosIds = new Set(candidaturasProcessadas.map(c => c.perfil_id));

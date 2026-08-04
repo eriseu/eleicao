@@ -76,7 +76,7 @@ export default function Home() {
 
       // 3. Mapear e combinar os dados
       const mappedData: Candidato[] = perfis.flatMap((perfil) => {
-        const candidaturasDoPerfil = candidaturas.filter(c => c.perfil_id === perfil.id);
+        const candidaturasDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
         if (candidaturasDoPerfil.length === 0) return [];
 
         // Encontra a candidatura mais recente ou a primeira disponível

@@ -81,7 +81,7 @@ export default function Home() {
 
         // Encontra a candidatura mais recente ou a primeira disponível
         const candidaturaAtiva =
-          candidaturasDoPerfil.find((c) => ACTIVE_ELECTION_YEARS.includes(c.ano_eleicao)) ||
+          candidaturasDoPerfil.find((c) => (ACTIVE_ELECTION_YEARS as readonly number[]).includes(c.ano_eleicao)) ||
           candidaturasDoPerfil.sort((a, b) => b.ano_eleicao - a.ano_eleicao)[0];
 
         if (!candidaturaAtiva) return [];

@@ -62,7 +62,6 @@ function RankingContent() {
     }
 
     async function loadMunicipios() {
-      // Esta função agora deve chamar sua API no VPS
       const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/municipios?uf=${selectedUf}`);
       if (!response.ok) {
         console.error("Falha ao buscar municípios do VPS");
@@ -88,7 +87,6 @@ function RankingContent() {
     }
     if (selectedMunicipio) {
       const stateName = getStateNameFromUf(selectedUf);
-      // Se o município selecionado não for a capital (com o mesmo nome do estado), busca cargos municipais.
       if (selectedMunicipio.localeCompare(stateName, 'pt-BR', { sensitivity: 'base' }) !== 0) {
         return CARGOS_POR_ESCOPO.municipal;
       }
@@ -138,18 +136,8 @@ function RankingContent() {
 
     let query = supabase
         .from('perfis_candidatos')
-        .select('*, candidaturas!inner(ano_eleicao, uf, municipio, cargo)')
-        .in('candidaturas.ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-        .in('candidaturas.cargo', cargos)
-        .order('elo_score', { ascending: false, nullsFirst: false })
-        .range(from, to);
-
-    if (selectedUf !== 'BR') {
-      query = query.eq('candidaturas.uf', selectedUf);
-    }
-    if (selectedMunicipio) {
-      query = query.eq('candidaturas.municipio', selectedMunicipio);
-    }
+        .select('*')
+        .order('elo_score', { ascending: false, nullsFirst: false });
 
     const { data: perfis, error } = await query;
 
@@ -164,11 +152,27 @@ function RankingContent() {
     const perfilIds = perfis.map(p => p.id);
     const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
-    // Apenas para manter a candidatura mais recente para o ranking
-    const candidaturasMaisRecentes = perfilIds.map(id => candidaturas.filter(c => c.perfil_id === id).sort((a,b) => b.ano_eleicao - a.ano_eleicao)[0]).filter(Boolean);
+    const candidaturasProcessadas = perfilIds.map(id => {
+      const candsDoPerfil = candidaturas.filter(c => 
+        c.perfil_id === id && 
+        ACTIVE_ELECTION_YEARS.includes(c.ano_eleicao) &&
+        cargos.includes(c.cargo) &&
+        (selectedUf === 'BR' || c.uf === selectedUf) &&
+        (!selectedMunicipio || c.municipio === selectedMunicipio)
+      );
+      return candsDoPerfil.sort((a, b) => b.ano_eleicao - a.ano_eleicao)[0];
+    }).filter(Boolean);
 
-    return processCandidaturas(perfis, candidaturasMaisRecentes);
-  }, [selectedUf, selectedMunicipio]);
+    const perfisValidosIds = new Set(candidaturasProcessadas.map(c => c.perfil_id));
+    const perfisFiltrados = perfis.filter(p => perfisValidosIds.has(p.id));
+
+    const perfisPaginados = perfisFiltrados.slice(from, to + 1);
+    const candidaturasPaginadas = perfisPaginados.map(p => 
+      candidaturasProcessadas.find(c => c.perfil_id === p.id)
+    ).filter(Boolean);
+
+    return processCandidaturas(perfisPaginados, candidaturasPaginadas);
+  }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
   useEffect(() => {
     const loadRanking = async () => {
@@ -177,9 +181,6 @@ function RankingContent() {
       let targetPage = page;
 
       if (highlightedId) {
-        // Otimização: Em vez de buscar todos, buscamos a posição do candidato.
-        // Isso pode ser feito com uma RPC no Supabase para melhor performance.
-        // Por simplicidade aqui, vamos buscar a posição e depois a página.
         const { data: highlightedProfile, error: profileError } = await supabase
           .from('perfis_candidatos')
           .select('elo_score')
@@ -187,7 +188,6 @@ function RankingContent() {
           .single();
 
         if (profileError || !highlightedProfile) {
-          // Se não encontrar o perfil, carrega a primeira página normalmente.
           setHighlightedId('');
           const rankingData = await fetchRankingData(0, cargos);
           setRanking(rankingData);
@@ -195,36 +195,13 @@ function RankingContent() {
           return;
         }
 
-        let countQuery = supabase
-            .from('perfis_candidatos')
-            .select('id, candidaturas!inner(cargo, uf, municipio)', { count: 'exact', head: true })
-            .in('candidaturas.cargo', cargos)
-            .gt('elo_score', highlightedProfile.elo_score);
-
-        if (selectedUf !== 'BR') {
-            countQuery = countQuery.eq('candidaturas.uf', selectedUf);
+        const rankingDataFull = await fetchRankingData(0, cargos);
+        const indexHighlight = rankingDataFull.findIndex(c => c.id === highlightedId);
+        
+        if (indexHighlight !== -1) {
+          targetPage = Math.floor(indexHighlight / ITEMS_PER_PAGE);
+          setPage(targetPage);
         }
-
-        if (selectedMunicipio) {
-            // O filtro de join já é aplicado no select, mas podemos reforçar
-            // A forma mais limpa seria uma RPC, mas isso funciona.
-            countQuery = countQuery.eq('candidaturas.municipio', selectedMunicipio);
-        }
-
-        const { count, error: countError } = await countQuery;
-
-        if (countError) {
-          console.error('Erro ao calcular posição:', countError.message);
-          // Fallback para a primeira página
-          const rankingData = await fetchRankingData(0, cargos);
-          setRanking(rankingData);
-          setLoading(false);
-          return;
-        }
-
-        const position = count || 0;
-        targetPage = Math.floor(position / ITEMS_PER_PAGE);
-        setPage(targetPage);
       }
 
       const rankingData = await fetchRankingData(targetPage, cargos);
@@ -232,8 +209,7 @@ function RankingContent() {
       setLoading(false);
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    loadRanking();
+    void loadRanking();
   }, [highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
   useEffect(() => {
@@ -244,7 +220,6 @@ function RankingContent() {
     });
   }, [highlightedId, loading, ranking]);
 
-  // Sincroniza a URL com os filtros selecionados
   useEffect(() => {
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
@@ -259,7 +234,7 @@ function RankingContent() {
   const handleShare = async () => {
     const region = selectedMunicipio || getStateNameFromUf(selectedUf);
     const shareUrl = new URL(window.location.href);
-    shareUrl.searchParams.delete('highlight'); // Remove o destaque do link compartilhado
+    shareUrl.searchParams.delete('highlight');
 
     const shareData = {
       title: 'Ranking Duelo Político',
@@ -271,14 +246,12 @@ function RankingContent() {
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
-        // Fallback para copiar o link
         await navigator.clipboard.writeText(shareData.url);
         setShareFeedback('Link copiado para a área de transferência!');
-        setTimeout(() => setShareFeedback(''), 3000); // Limpa o feedback após 3 segundos
+        setTimeout(() => setShareFeedback(''), 3000);
       }
     } catch (error) {
       console.error('Erro ao compartilhar:', error);
-      // Fallback caso o compartilhamento falhe (ex: usuário cancelou)
       try {
         await navigator.clipboard.writeText(shareData.url);
         setShareFeedback('Link copiado para a área de transferência!');
@@ -290,7 +263,6 @@ function RankingContent() {
       }
     }
   };
-
 
   return (
       <main className="bg-slate-950 text-slate-100 pb-28">

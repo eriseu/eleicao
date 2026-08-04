@@ -62,7 +62,7 @@ function RankingContent() {
     }
 
     async function loadMunicipios() {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/municipios?uf=${selectedUf}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
       if (!response.ok) {
         console.error("Falha ao buscar municípios do VPS");
         setMunicipios([]);

@@ -130,16 +130,16 @@ function RankingContent() {
     });
   };
 
-  const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
+const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
     const from = currentPage * ITEMS_PER_PAGE;
     const to = from + ITEMS_PER_PAGE - 1;
 
-    let query = supabase
+    // Otimização: Aplicar paginação diretamente no Supabase reduz drásticamente o uso de memória
+    const { data: perfis, error } = await supabase
         .from('perfis_candidatos')
         .select('*')
-        .order('elo_score', { ascending: false, nullsFirst: false });
-
-    const { data: perfis, error } = await query;
+        .order('elo_score', { ascending: false, nullsFirst: false })
+        .range(from, to);
 
     if (error) {
       console.error('Erro ao carregar ranking:', error.message);
@@ -166,12 +166,7 @@ function RankingContent() {
     const perfisValidosIds = new Set(candidaturasProcessadas.map(c => c.perfil_id));
     const perfisFiltrados = perfis.filter(p => perfisValidosIds.has(p.id));
 
-    const perfisPaginados = perfisFiltrados.slice(from, to + 1);
-    const candidaturasPaginadas = perfisPaginados.map(p => 
-      candidaturasProcessadas.find(c => c.perfil_id === p.id)
-    ).filter(Boolean);
-
-    return processCandidaturas(perfisPaginados, candidaturasPaginadas);
+    return processCandidaturas(perfisFiltrados, candidaturasProcessadas);
   }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
   useEffect(() => {

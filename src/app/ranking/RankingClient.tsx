@@ -150,7 +150,7 @@ function RankingContent() {
       const from = currentPage * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      const { data: perfis, error } = await supabase
+      const { data, error } = await supabase.rpc('get_perfis_por_ids', {
         .from('perfis_candidatos')
         .select('*')
         .in('id', perfilIdsVps)

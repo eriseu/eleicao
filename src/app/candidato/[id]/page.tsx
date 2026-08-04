@@ -51,9 +51,9 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           ultima_candidatura: candidaturaAtiva ? {
             ano_eleicao: candidaturaAtiva.ano_eleicao,
             uf: candidaturaAtiva.uf,
-            sq_candidato: candidaturaAtiva.sq_candidato
+            sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0
           } : null
-        });
+        }) as any;
 
       } catch (err) {
         console.error("Erro geral na carga do perfil:", err);

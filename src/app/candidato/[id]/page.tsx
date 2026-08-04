@@ -44,7 +44,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           ...cand,
           nome_urna: candidaturaAtiva?.nome_urna || cand.nome_completo,
           partido: candidaturaAtiva?.partido || 'Não informado',
-          sg_partido: candidaturaAtiva?.sg_partido || null,
           cargo: candidaturaAtiva?.cargo || 'Não informado',
           uf: candidaturaAtiva?.uf || cand.uf || '—',
           municipio: candidaturaAtiva?.municipio || 'Não informado',
@@ -83,7 +82,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           {candidato.nome_completo}
         </h1>
         <p className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mt-2">
-          {candidato.cargo} • {candidato.sg_partido ? `${candidato.partido} (${candidato.sg_partido})` : candidato.partido}
+          {candidato.cargo} • {candidato.partido}
         </p>
 
         {/* Estatísticas de Duelo */}

@@ -75,7 +75,7 @@ function RankingContent() {
         new Set((data || [])
           .map((item: any) => item.municipio?.trim())
           .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
-      ).sort();
+      ).sort() as string[];
       setMunicipios(uniqueMunicipios);
     }
 

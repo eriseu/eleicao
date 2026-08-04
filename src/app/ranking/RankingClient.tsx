@@ -156,9 +156,9 @@ const fetchRankingData = useCallback(async (currentPage: number, cargos: string[
       const candsDoPerfil = candidaturas.filter((c: any) => 
         c.perfil_id === id &&
         (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
-        cargos.includes(c.cargo) &&
-        (selectedUf === 'BR' || c.uf === selectedUf) &&
-        (!selectedMunicipio || c.municipio === selectedMunicipio)
+        cargos.some(cargoPermitido => cargoPermitido.toUpperCase() === c.cargo?.toUpperCase()) &&
+        (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
+        (!selectedMunicipio || c.municipio?.trim().toUpperCase() === selectedMunicipio.trim().toUpperCase())
       );
       return candsDoPerfil.sort((a: any, b: any) => b.ano_eleicao - a.ano_eleicao)[0];
     }).filter(Boolean);

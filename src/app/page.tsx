@@ -99,7 +99,7 @@ export default function Home() {
                 perfil_id: perfil.id,
                 created_at: perfil.created_at,
                 sq_candidato:
-                  candidaturaAtiva.sq_candidato?.toString() ||
+                  Number(candidaturaAtiva.sq_candidato) || 0
                   candidaturaAtiva.foto
                     ?.replace(/_div\.(jpg|jpeg|png)/g, '')
                     .replace(/[A-Z]/g, ''),

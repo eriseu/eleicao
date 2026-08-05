@@ -29,7 +29,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  // Busca de municípios corrigida usando a API do VPS corretamente
+  // Busca de municípios corrigida usando a API do VPS
   useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
@@ -84,6 +84,7 @@ export default function Home() {
       const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
       if (candsDoPerfil.length === 0) return [];
 
+      // Ordena do ano mais recente para o mais antigo
       const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
       const candidaturaPrincipal = sortedCands[0];
 
@@ -111,6 +112,7 @@ export default function Home() {
         uf: candidaturaPrincipal.uf,
         municipio: candidaturaPrincipal.municipio,
         foto: fotoFinal,
+        // Passa o array completo ordenado para que o CandidateImage aplique a fila de fallbacks por ano e extensões corretamente
         candidaturas: sortedCands,
         ultima_candidatura: {
           ...candidaturaPrincipal,
@@ -148,7 +150,6 @@ export default function Home() {
         return;
       }
 
-      // Busca os perfis no Supabase limitando a uma quantidade saudável para os duelos (ex: 150)
       const idsAmostra = perfilIdsVps.slice(0, 150);
 
       const { data: perfisData, error } = await supabase

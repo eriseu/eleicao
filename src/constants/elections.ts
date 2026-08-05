@@ -1,4 +1,4 @@
-export const ACTIVE_ELECTION_YEARS = [2024, 2022] as const;
+export const ACTIVE_ELECTION_YEARS = [2026, 2024, 2022, 2020, 2018, 2016, 2014, 2012, 2010, 2008, 2006] as const;
 
 export const AVAILABLE_UFS = [
   'BR',

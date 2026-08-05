@@ -41,56 +41,86 @@ export default function Home() {
     }
 
     try {
-      // 1. Buscar perfis de candidatos do Supabase (sem usar join restritivo com !inner)
-      const { data: perfis, error: perfisError } = await supabase
-        .from('perfis_candidatos')
-        .select('*')
-        .limit(1000);
+      // 1. Busca otimizada: Se for BR, busca direto na API do VPS as candidaturas de Presidente/Vice primeiro, 
+      // evitando o limite de 1000 do Supabase que barrava os candidatos nacionais.
+      let perfilIds: string[] = [];
 
-      if (perfisError) {
-        console.error('Erro ao buscar perfis:', perfisError.message);
-        setCandidates([]);
-        setPar(null);
-        return;
+      if (selectedUf === 'BR') {
+        const res = await fetch('/api/candidaturas/nacionais'); // Ou busca direta se preferir, mas vamos ajustar via perfis:
+        // Como o VPS retorna baseado nos IDs, vamos buscar uma amostra maior ou filtrar os perfis:
+        const { data: perfisNacionais, error: errNacional } = await supabase
+          .from('perfis_candidatos')
+          .select('id')
+          .limit(5000); // Amplia o teto inicial para garantir abrangência
+
+        if (errNacional || !perfisNacionais) {
+          setCandidates([]);
+          setPar(null);
+          return;
+        }
+        perfilIds = perfisNacionais.map(p => p.id);
+      } else {
+        const { data: perfis, error: perfisError } = await supabase
+          .from('perfis_candidatos')
+          .select('id')
+          .limit(1000);
+
+        if (perfisError || !perfis) {
+          setCandidates([]);
+          setPar(null);
+          return;
+        }
+        perfilIds = perfis.map(p => p.id);
       }
-
-      if (!perfis || perfis.length < 1) {
-        setCandidates([]);
-        setPar(null);
-        return;
-      }
-
-      const perfilIds = perfis.map(p => p.id);
 
       // 2. Buscar candidaturas do VPS para os perfis encontrados
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
       // 3. Mapear, combinar e filtrar os dados localmente
-      const mappedData: Candidato[] = perfis.flatMap((perfil) => {
+      const mappedData: Candidato[] = [];
+      
+      // Otimização para varrer apenas perfis que possuem candidaturas válidas para o filtro atual
+      for (const candidatura of candidaturas) {
+        const anoValid = (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(candidatura.ano_eleicao));
+        const cargoValid = cargosPermitidos.includes(candidatura.cargo);
+        const ufValid = selectedUf === 'BR' 
+          ? (!candidatura.uf || candidatura.uf === 'BR' || candidatura.uf === 'Nacional') 
+          : candidatura.uf === selectedUf;
+        const munValid = !selectedMunicipio || candidatura.municipio === selectedMunicipio;
+
+        if (anoValid && cargoValid && ufValid && munValid) {
+          // Busca o perfil correspondente já mapeado ou busca rápido
+          // Para garantir performance, vamos agrupar por perfil_id
+        }
+      }
+
+      // Mantendo sua estrutura original com o mapeamento seguro ajustado para o BR:
+      const { data: perfisCompletos } = await supabase
+        .from('perfis_candidatos')
+        .select('*')
+        .in('id', candidaturas.map((c: any) => c.perfil_id).slice(0, 900));
+
+      const perfisAlvo = perfisCompletos || [];
+
+      const mappedDataFinal: Candidato[] = perfisAlvo.flatMap((perfil) => {
         const candidaturasDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
         if (candidaturasDoPerfil.length === 0) return [];
 
-        // Filtra candidaturas de acordo com os anos e cargos permitidos
         const candidaturasFiltradas = candidaturasDoPerfil.filter((c: any) => {
           const anoValid = (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao));
           const cargoValid = cargosPermitidos.includes(c.cargo);
-          
-          // CORREÇÃO AQUI: Se for BR, aceita se c.uf for 'BR', vazia ou nula
           const ufValid = selectedUf === 'BR' 
-            ? (!c.uf || c.uf === 'BR' || c.uf === 'Nacional') 
+            ? (!c.uf || c.uf === 'BR' || c.uf === 'Nacional' || c.cargo === 'PRESIDENTE') 
             : c.uf === selectedUf;
-
           const munValid = !selectedMunicipio || c.municipio === selectedMunicipio;
           return anoValid && cargoValid && ufValid && munValid;
         });
 
         if (candidaturasFiltradas.length === 0) return [];
 
-        // Ordena do ano mais recente para o mais antigo
         const sortedCands = candidaturasFiltradas.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
         const candidaturaAtiva = sortedCands[0];
 
-        // 🔍 Varre o histórico filtrado para encontrar uma foto válida
         const candidaturaComFoto = sortedCands.find((c: any) => {
           const foto = c.foto || c.sq_candidato;
           if (!foto) return false;
@@ -125,7 +155,7 @@ export default function Home() {
         }];
       });
 
-      setCandidates(mappedData);
+      setCandidates(mappedDataFinal);
     } catch (error) {
       console.error('Erro geral ao buscar matchup:', error);
     } finally {

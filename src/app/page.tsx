@@ -1,189 +1,179 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import CandidateImage from '@/components/ui/CandidateImage';
-import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
+import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
 import type { Candidato } from '@/types';
+
+const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
+  nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+  estadual: [
+    'DEPUTADO ESTADUAL',
+    'DEPUTADO FEDERAL',
+    'GOVERNADOR',
+    'VICE-GOVERNADOR',
+    'SENADOR',
+  ],
+  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+};
 
 export default function Home() {
   const [par, setPar] = useState<[Candidato, Candidato] | null>(null);
   const [candidates, setCandidates] = useState<Candidato[]>([]);
   const [selectedUf, setSelectedUf] = useState('BR');
   const [selectedMunicipio, setSelectedMunicipio] = useState('');
+  const [municipios, setMunicipios] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  const fetchCandidates = async () => {
-    setLoading(true);
-
-    const cargosPorEscopo: { [key: string]: string[] } = {
-      nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
-      estadual: [
-        'DEPUTADO ESTADUAL',
-        'DEPUTADO FEDERAL',
-        'GOVERNADOR',
-        'VICE-GOVERNADOR',
-        'SENADOR',
-      ],
-      municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
-    };
-
-    let cargosPermitidos: string[] = [];
+  // Busca de municípios corrigida usando a API do VPS corretamente
+  useEffect(() => {
     if (selectedUf === 'BR') {
-      cargosPermitidos = cargosPorEscopo.nacional;
-    } else if (selectedMunicipio) {
-      cargosPermitidos = cargosPorEscopo.municipal;
-    } else {
-      cargosPermitidos = [...cargosPorEscopo.estadual, ...cargosPorEscopo.municipal];
+      setMunicipios([]);
+      setSelectedMunicipio('');
+      return;
     }
 
-    try {
-      // 1. Busca otimizada: Se for BR, busca direto na API do VPS as candidaturas de Presidente/Vice primeiro, 
-      // evitando o limite de 1000 do Supabase que barrava os candidatos nacionais.
-      let perfilIds: string[] = [];
-
-      if (selectedUf === 'BR') {
-        const res = await fetch('/api/candidaturas/nacionais'); // Ou busca direta se preferir, mas vamos ajustar via perfis:
-        // Como o VPS retorna baseado nos IDs, vamos buscar uma amostra maior ou filtrar os perfis:
-        const { data: perfisNacionais, error: errNacional } = await supabase
-          .from('perfis_candidatos')
-          .select('id')
-          .limit(5000); // Amplia o teto inicial para garantir abrangência
-
-        if (errNacional || !perfisNacionais) {
-          setCandidates([]);
-          setPar(null);
+    async function loadMunicipios() {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
+        if (!response.ok) {
+          console.error("Falha ao buscar municípios do VPS");
+          setMunicipios([]);
           return;
         }
-        perfilIds = perfisNacionais.map(p => p.id);
-      } else {
-        const { data: perfis, error: perfisError } = await supabase
-          .from('perfis_candidatos')
-          .select('id')
-          .limit(1000);
+        const data = await response.json();
 
-        if (perfisError || !perfis) {
-          setCandidates([]);
-          setPar(null);
-          return;
-        }
-        perfilIds = perfis.map(p => p.id);
+        const uniqueMunicipios = Array.from(
+          new Set((data || [])
+            .map((item: any) => (typeof item === 'string' ? item : item.municipio)?.trim())
+            .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
+        ).sort() as string[];
+        
+        setMunicipios(uniqueMunicipios);
+      } catch (error) {
+        console.error("Erro ao carregar municípios:", error);
+        setMunicipios([]);
       }
+    }
 
-      // 2. Buscar candidaturas do VPS para os perfis encontrados
-      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+    void loadMunicipios();
+  }, [selectedUf]);
 
-      // 3. Mapear, combinar e filtrar os dados localmente
-      const mappedData: Candidato[] = [];
-      
-      // Otimização para varrer apenas perfis que possuem candidaturas válidas para o filtro atual
-      for (const candidatura of candidaturas) {
-        const anoValid = (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(candidatura.ano_eleicao));
-        const cargoValid = cargosPermitidos.includes(candidatura.cargo);
-        const ufValid = selectedUf === 'BR' 
-          ? (!candidatura.uf || candidatura.uf === 'BR' || candidatura.uf === 'Nacional') 
-          : candidatura.uf === selectedUf;
-        const munValid = !selectedMunicipio || candidatura.municipio === selectedMunicipio;
+  const getCargosPorEscopo = useCallback(() => {
+    if (selectedUf === 'BR') {
+      return CARGOS_POR_ESCOPO.nacional;
+    }
+    if (selectedMunicipio) {
+      return CARGOS_POR_ESCOPO.municipal;
+    }
+    return [...CARGOS_POR_ESCOPO.estadual, ...CARGOS_POR_ESCOPO.municipal];
+  }, [selectedUf, selectedMunicipio]);
 
-        if (anoValid && cargoValid && ufValid && munValid) {
-          // Busca o perfil correspondente já mapeado ou busca rápido
-          // Para garantir performance, vamos agrupar por perfil_id
-        }
+  const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
+    const perfisIncluidos = new Set<string>();
+    return perfis.flatMap((perfil) => {
+      if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
+        return [];
       }
+      perfisIncluidos.add(perfil.id);
 
-      // Mantendo sua estrutura original com o mapeamento seguro ajustado para o BR:
-      const { data: perfisCompletos } = await supabase
-        .from('perfis_candidatos')
-        .select('*')
-        .in('id', candidaturas.map((c: any) => c.perfil_id).slice(0, 900));
+      const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+      if (candsDoPerfil.length === 0) return [];
 
-      const perfisAlvo = perfisCompletos || [];
+      const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+      const candidaturaPrincipal = sortedCands[0];
 
-      const mappedDataFinal: Candidato[] = perfisAlvo.flatMap((perfil) => {
-        const candidaturasDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
-        if (candidaturasDoPerfil.length === 0) return [];
-
-        const candidaturasFiltradas = candidaturasDoPerfil.filter((c: any) => {
-          const anoValid = (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao));
-          const cargoValid = cargosPermitidos.includes(c.cargo);
-          const ufValid = selectedUf === 'BR' 
-            ? (!c.uf || c.uf === 'BR' || c.uf === 'Nacional' || c.cargo === 'PRESIDENTE') 
-            : c.uf === selectedUf;
-          const munValid = !selectedMunicipio || c.municipio === selectedMunicipio;
-          return anoValid && cargoValid && ufValid && munValid;
-        });
-
-        if (candidaturasFiltradas.length === 0) return [];
-
-        const sortedCands = candidaturasFiltradas.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
-        const candidaturaAtiva = sortedCands[0];
-
-        const candidaturaComFoto = sortedCands.find((c: any) => {
-          const foto = c.foto || c.sq_candidato;
-          if (!foto) return false;
-          const fotoStr = String(foto);
-          return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
-        });
-
-        const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaAtiva.foto;
-
-        return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score || 1200,
-          matches_count: perfil.matches_count || 0,
-          nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
-          partido: candidaturaAtiva?.partido || 'S/P',
-          cargo: candidaturaAtiva?.cargo || 'Não informado',
-          foto: fotoFinal,
-          candidaturas: sortedCands,
-          ultima_candidatura: candidaturaAtiva
-            ? {
-                ...candidaturaAtiva,
-                perfil_id: perfil.id,
-                created_at: perfil.created_at,
-                sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0,
-                foto: fotoFinal,
-            }
-            : null,
-        }];
+      const candidaturaComFoto = sortedCands.find((c: any) => {
+        const foto = c.foto || c.sq_candidato;
+        if (!foto) return false;
+        const fotoStr = String(foto);
+        return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
       });
 
+      const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
+
+      return [{
+        id: perfil.id,
+        nome_completo: perfil.nome_completo,
+        cpf: perfil.cpf,
+        titulo_eleitoral: perfil.titulo_eleitoral,
+        created_at: perfil.created_at,
+        elo_score: perfil.elo_score ?? 1200,
+        matches_count: perfil.matches_count ?? 0,
+        nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
+        partido: candidaturaPrincipal.partido || 'S/P',
+        cargo: candidaturaPrincipal.cargo,
+        ano_eleicao: candidaturaPrincipal.ano_eleicao,
+        uf: candidaturaPrincipal.uf,
+        municipio: candidaturaPrincipal.municipio,
+        foto: fotoFinal,
+        candidaturas: sortedCands,
+        ultima_candidatura: {
+          ...candidaturaPrincipal,
+          foto: fotoFinal,
+          perfil_id: perfil.id,
+          created_at: perfil.created_at,
+          sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
+        },
+      }];
+    });
+  };
+
+  const fetchCandidates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const cargos = getCargosPorEscopo();
+      const queryParams = new URLSearchParams();
+      queryParams.append('uf', selectedUf);
+      cargos.forEach(cargo => queryParams.append('cargos', cargo));
+      if (selectedMunicipio) {
+        queryParams.append('municipio', selectedMunicipio);
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+      if (!response.ok) {
+        setCandidates([]);
+        setPar(null);
+        return;
+      }
+
+      const perfilIdsVps: string[] = await response.json();
+      if (!perfilIdsVps || perfilIdsVps.length === 0) {
+        setCandidates([]);
+        setPar(null);
+        return;
+      }
+
+      // Busca os perfis no Supabase limitando a uma quantidade saudável para os duelos (ex: 150)
+      const idsAmostra = perfilIdsVps.slice(0, 150);
+
+      const { data: perfisData, error } = await supabase
+        .from('perfis_candidatos')
+        .select('*')
+        .in('id', idsAmostra);
+
+      if (error || !perfisData || perfisData.length === 0) {
+        setCandidates([]);
+        setPar(null);
+        return;
+      }
+
+      const perfilIds = perfisData.map((p: any) => p.id);
+      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+
+      const mappedDataFinal = processCandidaturas(perfisData, candidaturas);
       setCandidates(mappedDataFinal);
     } catch (error) {
       console.error('Erro geral ao buscar matchup:', error);
+      setCandidates([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  const municipios = useMemo(() => {
-    if (selectedUf === 'BR') return [];
-    return Array.from(
-      new Set( // Usamos um Set para garantir que os municípios sejam únicos
-        candidates // Começamos com a lista completa de candidatos
-          .filter(
-            (c) =>
-              c.ultima_candidatura?.uf === selectedUf && // Filtramos pelo estado selecionado
-              ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'].includes(c.ultima_candidatura?.cargo || '') // Consideramos apenas cargos municipais
-          )
-          .map((c) => c.ultima_candidatura?.municipio) // Extraímos o nome do município
-          .filter((m): m is string => !!m) // Filtramos valores nulos ou vazios
-      )
-    ).sort();
-  }, [candidates, selectedUf]);
-
-  const filteredCandidates = useMemo(() => {
-    // A filtragem agora é feita diretamente na query, então apenas retornamos os candidatos.
-    // Poderíamos adicionar filtros do lado do cliente aqui se necessário no futuro.
-    return candidates;
-  }, [candidates]);
+  }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
   const pickRandomPair = (source: Candidato[]) => {
     if (source.length < 2) return null;
@@ -193,7 +183,11 @@ export default function Home() {
 
   useEffect(() => {
     void fetchCandidates();
-  }, [selectedUf, selectedMunicipio]);
+  }, [fetchCandidates]);
+
+  const filteredCandidates = useMemo(() => {
+    return candidates;
+  }, [candidates]);
 
   useEffect(() => {
     if (loading) return;
@@ -268,7 +262,8 @@ export default function Home() {
                 setSelectedMunicipio('');
               }}
             >
-              {AVAILABLE_UFS.map((uf) => (
+              <option value="BR">Brasil</option>
+              {AVAILABLE_UFS.filter((uf) => uf !== 'BR').map((uf) => (
                 <option key={uf} value={uf}>{uf}</option>
               ))}
             </select>

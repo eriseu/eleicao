@@ -61,22 +61,21 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        // Abordagem segura: Busca os IDs direto no VPS via query params limpos
+        // Busca os IDs através da API interna do Next.js (evita CORS e protege o VPS)
         let perfilIdsVps: string[] = [];
         try {
           const queryParams = new URLSearchParams();
           queryParams.append('uf', uf);
-          // Passamos os cargos ou deixamos o VPS retornar filtrado por nome se suportado
           if (municipio) {
             queryParams.append('municipio', municipio);
           }
 
-          const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+          const response = await fetch(`/api/candidatos-filtrados?${queryParams.toString()}`);
           if (response.ok) {
             perfilIdsVps = await response.json();
           }
         } catch (e) {
-          console.warn('Erro ao consultar IDs no VPS:', e);
+          console.warn('Erro ao consultar IDs via API interna:', e);
         }
 
         if (!perfilIdsVps || perfilIdsVps.length === 0) {

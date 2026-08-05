@@ -53,6 +53,7 @@ function RankingContent() {
   const [highlightedId, setHighlightedId] = useState(searchParams.get('highlight') || '');
   const [loading, setLoading] = useState(false);
   const [shareFeedback, setShareFeedback] = useState('');
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     if (selectedUf === 'BR') {
@@ -102,8 +103,17 @@ function RankingContent() {
       }
       perfisIncluidos.add(perfil.id);
 
-      const candidatura = candidaturas.find(c => c.perfil_id === perfil.id);
-      if (!candidatura) return [];
+      // Filtra todas as candidaturas do perfil para encontrar a mais recente e também buscar foto em anos anteriores se necessário[cite: 2]
+      const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+      if (candsDoPerfil.length === 0) return [];
+
+      // Ordena por ano decrescente para pegar a mais recente elegível
+      const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+      const candidaturaPrincipal = sortedCands[0];
+
+      // Procura a foto mais recente disponível entre todas as candidaturas do histórico caso a atual esteja sem foto[cite: 2]
+      const candidaturaComFoto = sortedCands.find((c: any) => c.foto && c.foto.trim() !== '');
+      const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : candidaturaPrincipal.foto;
 
       return [{
         id: perfil.id,
@@ -113,18 +123,19 @@ function RankingContent() {
         created_at: perfil.created_at,
         elo_score: perfil.elo_score ?? 1200,
         matches_count: perfil.matches_count ?? 0,
-        nome_urna: candidatura.nome_urna || perfil.nome_completo,
-        partido: candidatura.partido || 'S/P',
-        cargo: candidatura.cargo,
-        ano_eleicao: candidatura.ano_eleicao,
-        uf: candidatura.uf,
-        municipio: candidatura.municipio,
-        foto: candidatura.foto,
+        nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
+        partido: candidaturaPrincipal.partido || 'S/P',
+        cargo: candidaturaPrincipal.cargo,
+        ano_eleicao: candidaturaPrincipal.ano_eleicao,
+        uf: candidaturaPrincipal.uf,
+        municipio: candidaturaPrincipal.municipio,
+        foto: fotoFinal,
         ultima_candidatura: {
-          ...candidatura,
+          ...candidaturaPrincipal,
+          foto: fotoFinal,
           perfil_id: perfil.id,
           created_at: perfil.created_at,
-          sq_candidato: candidatura.sq_candidato,
+          sq_candidato: candidaturaPrincipal.sq_candidato,
         },
       }];
     });
@@ -132,7 +143,6 @@ function RankingContent() {
 
   const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
     try {
-      // 1. Busca os IDs filtrados diretamente na API VPS de acordo com a UF e Município
       const queryParams = new URLSearchParams();
       queryParams.append('uf', selectedUf);
       cargos.forEach(cargo => queryParams.append('cargos', cargo));
@@ -146,20 +156,23 @@ function RankingContent() {
       const perfilIdsVps: string[] = await response.json();
       if (!perfilIdsVps || perfilIdsVps.length === 0) return [];
 
-      // 2. Consulta o Supabase ordenando por elo_score apenas para os IDs válidos da região
       const from = currentPage * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
+      
+      // Busca apenas os perfis da página atual direto no banco (Paginação real via RPC)
+      const { data, error } = await supabase.rpc('get_ranking_paginado', {
+        ids: perfilIdsVps,
+        limite: ITEMS_PER_PAGE,
+        deslocamento: from
+      });
 
-      const { data, error } = await supabase.rpc('get_perfis_por_ids', {
-          ids: perfilIdsVps
-        });
+      if (error || !data || data.length === 0) {
+        setHasMore(false);
+        return [];
+      }
 
-      if (error || !data || data.length === 0) return [];
+      setHasMore(data.length === ITEMS_PER_PAGE);
 
-      // Se precisar aplicar a paginação (.range) que estava no final, 
-      // você pode recortar o array já ordenado aqui no JS:
-      const perfisPaginados = data.slice(from, to + 1);
-      const perfilIds = perfisPaginados.map((p: any) => p.id);
+      const perfilIds = data.map((p: any) => p.id);
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
       const candidaturasProcessadas = perfilIds.map((id: any) => {
@@ -170,13 +183,13 @@ function RankingContent() {
           (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
           (!selectedMunicipio || c.municipio?.trim().toUpperCase() === selectedMunicipio.trim().toUpperCase())
         );
-        return candsDoPerfil.sort((a: any, b: any) => b.ano_eleicao - a.ano_eleicao)[0];
+        return candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao))[0];
       }).filter(Boolean);
 
       const perfisValidosIds = new Set(candidaturasProcessadas.map((c: any) => c.perfil_id));
       const perfisFiltrados = data.filter((p: any) => perfisValidosIds.has(p.id));
 
-      return processCandidaturas(perfisFiltrados, candidaturasProcessadas);
+      return processCandidaturas(perfisFiltrados, candidaturas);
     } catch (err) {
       console.error('Erro ao buscar dados do ranking:', err);
       return [];
@@ -190,26 +203,14 @@ function RankingContent() {
       let targetPage = page;
 
       if (highlightedId) {
-        const { data: highlightedProfile, error: profileError } = await supabase
+        const { data: highlightedProfile } = await supabase
           .from('perfis_candidatos')
           .select('elo_score')
           .eq('id', highlightedId)
           .single();
 
-        if (profileError || !highlightedProfile) {
+        if (!highlightedProfile) {
           setHighlightedId('');
-          const rankingData = await fetchRankingData(0, cargos);
-          setRanking(rankingData);
-          setLoading(false);
-          return;
-        }
-
-        const rankingDataFull = await fetchRankingData(0, cargos);
-        const indexHighlight = rankingDataFull.findIndex(c => c.id === highlightedId);
-        
-        if (indexHighlight !== -1) {
-          targetPage = Math.floor(indexHighlight / ITEMS_PER_PAGE);
-          setPage(targetPage);
         }
       }
 
@@ -400,7 +401,7 @@ function RankingContent() {
             </button>
             <span className="font-bold text-white">Página {page + 1}</span>
             <button
-              disabled={ranking.length < ITEMS_PER_PAGE}
+              disabled={!hasMore || ranking.length < ITEMS_PER_PAGE}
               onClick={() => setPage((p) => p + 1)}
               className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
             >

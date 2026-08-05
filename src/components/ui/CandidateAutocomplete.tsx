@@ -61,44 +61,25 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        // 1. Busca por nome_completo no Supabase (com tratamento seguro de erro)
-        let perfilIds: string[] = [];
-        try {
-          const { data: perfisData } = await supabase
-            .from('perfis_candidatos')
-            .select('id')
-            .ilike('nome_completo', `%${sanitizedTerm}%`)
-            .limit(20);
-
-          if (perfisData) {
-            perfilIds = perfisData.map((p: any) => p.id);
-          }
-        } catch (e) {
-          console.warn('Erro ao buscar por nome_completo no Supabase:', e);
-        }
-
-        // 2. Busca por nome_urna diretamente na API do VPS
-        let perfilIdsVpsPorNomeUrna: string[] = [];
+        // Abordagem segura: Busca os IDs direto no VPS via query params limpos
+        let perfilIdsVps: string[] = [];
         try {
           const queryParams = new URLSearchParams();
           queryParams.append('uf', uf);
-          queryParams.append('nome_urna', sanitizedTerm);
+          // Passamos os cargos ou deixamos o VPS retornar filtrado por nome se suportado
           if (municipio) {
             queryParams.append('municipio', municipio);
           }
 
           const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
           if (response.ok) {
-            perfilIdsVpsPorNomeUrna = await response.json();
+            perfilIdsVps = await response.json();
           }
         } catch (e) {
-          console.warn('Erro ao buscar por nome_urna no VPS:', e);
+          console.warn('Erro ao consultar IDs no VPS:', e);
         }
 
-        // Unifica todos os IDs encontrados (tanto do nome completo quanto da urna)
-        const todosIds = Array.from(new Set([...perfilIds, ...perfilIdsVpsPorNomeUrna]));
-
-        if (todosIds.length === 0) {
+        if (!perfilIdsVps || perfilIdsVps.length === 0) {
           if (!cancelled) {
             setResults([]);
             setLoading(false);
@@ -106,14 +87,14 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        // Pega os dados finais dos perfis no Supabase e as candidaturas no VPS
-        const idsAmostra = todosIds.slice(0, 30);
-        const { data: perfisFinais } = await supabase
+        // Pega uma amostra dos perfis no Supabase para cruzar com os dados do VPS
+        const idsAmostra = perfilIdsVps.slice(0, 100);
+        const { data: perfisFinais, error: perfilError } = await supabase
           .from('perfis_candidatos')
           .select('*')
           .in('id', idsAmostra);
 
-        if (!perfisFinais || perfisFinais.length === 0) {
+        if (perfilError || !perfisFinais || perfisFinais.length === 0) {
           if (!cancelled) {
             setResults([]);
             setLoading(false);
@@ -126,7 +107,9 @@ export default function CandidateAutocomplete({
 
         if (cancelled) return;
 
+        const termLower = sanitizedTerm.toLowerCase();
         const perfisIncluidos = new Set<string>();
+
         const mapped = perfisFinais.flatMap((perfil: any) => {
           if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id) || perfil.id === excludeId) {
             return [];
@@ -137,6 +120,13 @@ export default function CandidateAutocomplete({
 
           const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
           const candidaturaPrincipal = sortedCands[0];
+
+          const nomeCompleto = (perfil.nome_completo || '').toLowerCase();
+          const nomeUrna = (candidaturaPrincipal.nome_urna || '').toLowerCase();
+
+          // Filtra localmente por nome completo ou nome de urna para garantir precisão sem estourar o banco
+          const matchTexto = nomeCompleto.includes(termLower) || nomeUrna.includes(termLower);
+          if (!matchTexto) return [];
 
           if (uf !== 'BR' && candidaturaPrincipal.uf !== uf) {
             return [];

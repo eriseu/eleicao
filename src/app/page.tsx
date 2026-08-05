@@ -164,9 +164,9 @@ export default function Home() {
       }
 
       const perfilIds = perfisData.map((p: any) => p.id);
-      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+      const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 
-      const mappedDataFinal = processCandidaturas(perfisData, candidaturas);
+      const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
       setCandidates(mappedDataFinal);
     } catch (error) {
       console.error('Erro geral ao buscar matchup:', error);

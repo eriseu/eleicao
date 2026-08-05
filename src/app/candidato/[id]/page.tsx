@@ -90,7 +90,14 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         
         {/* Foto e Identificação Principal */}
         <div className="w-28 h-28 rounded-full overflow-hidden border bg-slate-50 shadow">
-          <CandidateImage candidato={candidato} alt={candidato.nome_completo} className="w-full h-full object-cover" />
+          <CandidateImage 
+            candidato={{
+              ...candidato,
+              candidaturas: historicoCandidaturas // 👈 Injetamos o histórico completo aqui
+            }} 
+            alt={candidato.nome_completo} 
+            className="w-full h-full object-cover" 
+          />
         </div>
         <h1 className="text-xl font-black text-slate-800 mt-4 text-center leading-tight">
           {candidato.nome_completo}

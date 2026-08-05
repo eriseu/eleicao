@@ -151,15 +151,15 @@ function RankingContent() {
       const to = from + ITEMS_PER_PAGE - 1;
 
       const { data, error } = await supabase.rpc('get_perfis_por_ids', {
-        .from('perfis_candidatos')
-        .select('*')
-        .in('id', perfilIdsVps)
-        .order('elo_score', { ascending: false, nullsFirst: false })
-        .range(from, to);
+          ids: perfilIdsVps
+        });
 
-      if (error || !perfis || perfis.length === 0) return [];
+      if (error || !data || data.length === 0) return [];
 
-      const perfilIds = perfis.map(p => p.id);
+      // Se precisar aplicar a paginação (.range) que estava no final, 
+      // você pode recortar o array já ordenado aqui no JS:
+      const perfisPaginados = data.slice(from, to + 1);
+      const perfilIds = perfisPaginados.map(p => p.id);
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
       const candidaturasProcessadas = perfilIds.map(id => {

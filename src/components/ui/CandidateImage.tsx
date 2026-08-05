@@ -27,45 +27,23 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
     historicoGeral.forEach((cand: any) => {
       const ano = cand.ano_eleicao || 2026;
       const uf = cand.uf || candidato.uf || 'BR';
-      const sq = cand.sq_candidato || cand.foto;
+      const fotoRef = cand.foto || cand.sq_candidato;
 
-      if (!sq) return;
+      if (!fotoRef) return;
 
-      if (typeof sq === 'string' && sq.startsWith('http')) {
-        fallbackQueue.push(sq);
+      const fotoStr = String(fotoRef).trim();
+
+      if (fotoStr.startsWith('http')) {
+        fallbackQueue.push(fotoStr);
         return;
       }
 
-      let extensoes: string[] = [];
-      if (ano === 2006 || ano === 2008) {
-        extensoes = ['png'];
-      } else if (ano >= 2010 && ano <= 2014) {
-        extensoes = ['jpg'];
-      } else {
-        extensoes = ['jpg', 'jpeg', 'png'];
-      }
-      
-      let sqLimpo = String(sq).replace(/\.(jpg|jpeg|png)$/i, '').replace(/_div$/i, '');
-      if (sqLimpo.startsWith('F') && sqLimpo.length > 3) {
-        sqLimpo = sqLimpo.substring(3);
-      }
-
-      if (sqLimpo.length > 2 && sqLimpo !== 'avatar') {
-        // 1. Anos mais recentes (geralmente 2022, 2024, 2026) que usam a estrutura em fotos.centraleti.com.br
+      if (fotoStr && fotoStr !== 'avatar.png' && fotoStr !== 'avatar') {
+        // Se a referência já contiver extensão ou formato completo, tenta usá-la diretamente nos domínios
         if (ano >= 2022) {
-          fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/F${uf}${sqLimpo}_div.jpg`);
-          fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/F${uf}${sqLimpo}_div.jpeg`);
+          fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${fotoStr}`);
         }
-
-        // 2. Anos anteriores (como 2012, 2014, etc.) que utilizam o domínio f.centraleti.com.br/f/... com a letra F
-        extensoes.forEach(ext => {
-          fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/F${uf}${sqLimpo}_div.${ext}`);
-        });
-
-        // 3. Formato alternativo sem a letra F (caso existam registros que omitam o prefixo no diretório)
-        extensoes.forEach(ext => {
-          fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${uf}${sqLimpo}_div.${ext}`);
-        });
+        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${fotoStr}`);
       }
     });
 

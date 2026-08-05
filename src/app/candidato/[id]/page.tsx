@@ -46,12 +46,14 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
         // 🔍 Procura a primeira candidatura no histórico inteiro que realmente possua uma foto válida
         const candidaturaComFoto = candsOrdenadas.find((c: any) => c.foto && c.foto.trim() !== '' && !c.foto.includes('avatar.png'));
-        const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : candidaturaAtiva?.foto;
+        
+        // Se achou em ano anterior, usa ela. Senão, tenta a da ativa, senão usa string vazia
+        const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : (candidaturaAtiva?.foto || '');
 
-        // 3️⃣ Agrupamento dos dados principais incluindo a foto encontrada no histórico
+        // 3️⃣ Agrupamento dos dados principais
         setCandidato({
           ...cand,
-          foto: fotoFinal || cand.foto,
+          foto: fotoFinal, // Força a foto válida do histórico aqui
           nome_urna: candidaturaAtiva?.nome_urna || cand.nome_completo,
           partido: candidaturaAtiva?.partido || 'Não informado',
           cargo: candidaturaAtiva?.cargo || 'Não informado',
@@ -59,10 +61,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           municipio: candidaturaAtiva?.municipio || 'Não informado',
           nm_coligacao: candidaturaAtiva?.nm_coligacao || 'Nenhum / Chapa Pura',
           ultima_candidatura: candidaturaAtiva ? {
+            ...candidaturaAtiva,
+            foto: fotoFinal, // Garante que o componente de imagem receba o link correto
             ano_eleicao: candidaturaAtiva.ano_eleicao,
             uf: candidaturaAtiva.uf,
-            sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0,
-            foto: fotoFinal
+            sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0
           } : null
         }) as any;
 

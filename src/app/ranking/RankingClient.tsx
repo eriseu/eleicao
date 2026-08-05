@@ -114,10 +114,12 @@ function RankingContent() {
       const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
       if (candsDoPerfil.length === 0) return [];
 
+      // Ordena do ano mais recente para o mais antigo
       const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
       const candidaturaPrincipal = sortedCands[0];
 
-      const candidaturaComFoto = sortedCands.find((c: any) => c.foto && c.foto.trim() !== '');
+      // 🔍 Procura a primeira candidatura no histórico inteiro que realmente possua uma foto válida
+      const candidaturaComFoto = sortedCands.find((c: any) => c.foto && c.foto.trim() !== '' && !c.foto.includes('avatar.png'));
       const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : candidaturaPrincipal.foto;
 
       return [{

@@ -103,7 +103,7 @@ function RankingContent() {
     return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-  const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
+const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
     const perfisIncluidos = new Set<string>();
     return perfis.flatMap((perfil) => {
       if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
@@ -118,9 +118,16 @@ function RankingContent() {
       const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
       const candidaturaPrincipal = sortedCands[0];
 
-      // 🔍 Procura a primeira candidatura no histórico inteiro que realmente possua uma foto válida
-      const candidaturaComFoto = sortedCands.find((c: any) => c.foto && c.foto.trim() !== '' && !c.foto.includes('avatar.png'));
-      const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : candidaturaPrincipal.foto;
+      // 🔍 Varre todo o histórico para encontrar uma foto válida (não vazia e que não seja o avatar padrão)
+      const candidaturaComFoto = sortedCands.find((c: any) => {
+        const foto = c.foto || c.sq_candidato;
+        if (!foto) return false;
+        const fotoStr = String(foto);
+        return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
+      });
+
+      // Se encontrou uma candidatura com foto no histórico, pegamos o sq/foto dela
+      const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
 
       return [{
         id: perfil.id,
@@ -137,6 +144,8 @@ function RankingContent() {
         uf: candidaturaPrincipal.uf,
         municipio: candidaturaPrincipal.municipio,
         foto: fotoFinal,
+        // Repassamos o array completo de candidaturas/histórico para o componente de imagem conseguir fazer o fallback completo
+        candidaturas: sortedCands,
         ultima_candidatura: {
           ...candidaturaPrincipal,
           foto: fotoFinal,
@@ -147,7 +156,6 @@ function RankingContent() {
       }];
     });
   };
-
   const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
     try {
       const queryParams = new URLSearchParams();

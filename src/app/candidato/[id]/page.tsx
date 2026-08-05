@@ -44,9 +44,14 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
         const candidaturaAtiva = candsOrdenadas.find((c: any) => c.ano_eleicao === 2024) || candsOrdenadas[0];
 
-        // 3️⃣ Agrupamento dos dados principais
+        // 🔍 Procura a primeira candidatura no histórico inteiro que realmente possua uma foto válida
+        const candidaturaComFoto = candsOrdenadas.find((c: any) => c.foto && c.foto.trim() !== '' && !c.foto.includes('avatar.png'));
+        const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : candidaturaAtiva?.foto;
+
+        // 3️⃣ Agrupamento dos dados principais incluindo a foto encontrada no histórico
         setCandidato({
           ...cand,
+          foto: fotoFinal || cand.foto,
           nome_urna: candidaturaAtiva?.nome_urna || cand.nome_completo,
           partido: candidaturaAtiva?.partido || 'Não informado',
           cargo: candidaturaAtiva?.cargo || 'Não informado',
@@ -56,7 +61,8 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           ultima_candidatura: candidaturaAtiva ? {
             ano_eleicao: candidaturaAtiva.ano_eleicao,
             uf: candidaturaAtiva.uf,
-            sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0
+            sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0,
+            foto: fotoFinal
           } : null
         }) as any;
 

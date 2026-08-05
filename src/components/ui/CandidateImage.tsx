@@ -36,17 +36,40 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
         return;
       }
 
+    let extensoes: string[] = [];
+    if (ano === 2006 || ano === 2008) {
+      extensoes = ['png'];
+    } else if (ano >= 2010 && ano <= 2014) {
+      extensoes = ['jpg'];
+    } else {
+      extensoes = ['jpg', 'jpeg', 'png'];
+    }
+
+    const fallbackQueue: string[] = [];
+      
       let sqLimpo = String(sq).replace(/\.(jpg|jpeg|png)$/i, '').replace(/_div$/i, '');
       if (sqLimpo.startsWith('F') && sqLimpo.length > 3) {
         sqLimpo = sqLimpo.substring(3);
       }
+      
 
       if (sqLimpo.length > 2 && sqLimpo !== 'avatar') {
-        // Adiciona as tentativas para este ano específico
+      // 1. Anos mais recentes (geralmente 2022, 2024, 2026) que usam a estrutura em fotos.centraleti.com.br
+      if (ano >= 2022) {
         fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/F${uf}${sqLimpo}_div.jpg`);
         fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/F${uf}${sqLimpo}_div.jpeg`);
-        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/F${uf}${sqLimpo}_div.jpg`);
       }
+
+      // 2. Anos anteriores (como 2012, 2014, etc.) que utilizam o domínio f.centraleti.com.br/f/... com a letra F
+      extensoes.forEach(ext => {
+        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${uf}${sqLimpo}_div.${ext}`);
+      });
+
+      // 3. Formato alternativo sem a letra F (caso existam registros que omitam o prefixo no diretório)
+      extensoes.forEach(ext => {
+        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${uf}${sqLimpo}_div.${ext}`);
+      });
+    }
     });
 
     const uniqueQueue = Array.from(new Set(fallbackQueue));

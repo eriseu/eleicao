@@ -159,7 +159,7 @@ function RankingContent() {
       // Se precisar aplicar a paginação (.range) que estava no final, 
       // você pode recortar o array já ordenado aqui no JS:
       const perfisPaginados = data.slice(from, to + 1);
-      const perfilIds = perfisPaginados.map(p => p.id);
+      const perfilIds = perfisPaginados.map((p: any) => p.id);
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
       const candidaturasProcessadas = perfilIds.map(id => {

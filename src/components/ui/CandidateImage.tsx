@@ -8,54 +8,65 @@ interface CandidateImageProps {
 }
 
 export default function CandidateImage({ candidato, alt, className }: CandidateImageProps) {
-  // 🛡️ Busca no array de candidaturas ou histórico a primeira que realmente possua uma foto válida, 
-  // caso contrário, recorre à candidatura ativa / mais recente.
-  const listaCandidaturas = candidato.candidaturas || candidato.historico || [];
-  
-  const candidaturaComFotoValida = listaCandidaturas.find((c: any) => 
-    c.foto && c.foto.trim() !== '' && !c.foto.includes('avatar.png')
-  );
-
-  const candidatura = 
-    candidaturaComFotoValida ||
-    candidato.ultima_candidatura || 
-    candidato.candidaturas?.find((c: any) => c.ano_eleicao === 2026) || 
-    candidato.candidaturas?.[0] ||
-    candidato;
-
   const [urls, setUrls] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    // Se o objeto já possui uma foto direta válida (ex: injetada pelo ranking ou perfil), colocamos ela no topo da fila
-    const fotoDireta = candidato.foto || candidatura?.foto;
-    const temFotoValidaDireta = fotoDireta && typeof fotoDireta === 'string' && fotoDireta.trim() !== '' && !fotoDireta.includes('avatar.png');
-
-    if (temFotoValidaDireta) {
-      setUrls([fotoDireta, '/avatar.png']);
+    // 1. Pega o valor bruto da foto
+    const fotoRaw = candidato.foto || candidato.ultima_candidatura?.foto || candidato.sq_candidato;
+    
+    // Se por acaso já for um link HTTP completo (ex: banco externo), usamos direto
+    if (typeof fotoRaw === 'string' && fotoRaw.startsWith('http')) {
+      setUrls([fotoRaw, '/avatar.png']);
       setCurrentIndex(0);
       return;
     }
 
-    // Caso contrário, gera a fila padrão de fallbacks usando a candidatura escolhida
-    const candidatoFake = {
-      nome_completo: candidato.nome_completo || candidato.nome_urna,
-      ultima_candidatura: candidatura ? {
-        ano_eleicao: candidatura.ano_eleicao,
-        uf: candidatura.uf || candidato.ultima_candidatura?.uf,
-        sq_candidato: candidatura.sq_candidato || candidatura.foto
-      } : null
-    };
+    // 2. Coletar todas as candidaturas disponíveis para montar uma fila super-resiliente
+    // Se a foto de 2026 falhar, ele tentará automaticamente o SQ de 2024, 2022, 2018, etc.
+    const candidaturasHistorico = candidato.historico || candidato.candidaturas || [];
+    const candidaturaPrincipal = candidato.ultima_candidatura || candidato;
+    const listaParaVerificar = [candidaturaPrincipal, ...candidaturasHistorico];
 
-    const photoList = getPhotoUrls(candidatoFake as any);
-    setUrls(photoList);
+    const fallbackQueue: string[] = [];
+
+    listaParaVerificar.forEach((cand: any) => {
+      if (!cand) return;
+      
+      const ano = cand.ano_eleicao || candidato.ano_eleicao || 2026;
+      const uf = cand.uf || candidato.uf || 'BR';
+      const sq = cand.sq_candidato || cand.foto;
+      
+      if (!sq || (typeof sq !== 'string' && typeof sq !== 'number')) return;
+      
+      // Limpa a string caso seja um nome de arquivo (ex: FCE12345_div.jpg -> 12345)
+      let sqLimpo = String(sq).replace(/\.(jpg|jpeg|png)$/i, '').replace(/_div$/i, '');
+      if (sqLimpo.startsWith('F') && sqLimpo.length > 3) {
+        sqLimpo = sqLimpo.substring(3); // Remove o prefixo "F" e a "UF"
+      }
+
+      // Se sobrou um SQ numérico válido, gera as URLs para os servidores de foto
+      if (sqLimpo.length > 2 && sqLimpo !== 'avatar') {
+        fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/F${uf}${sqLimpo}_div.jpg`);
+        fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/F${uf}${sqLimpo}_div.jpeg`);
+        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/F${uf}${sqLimpo}_div.jpg`);
+      }
+    });
+
+    // Remove links duplicados (caso o SQ seja o mesmo em anos diferentes)
+    const uniqueQueue = Array.from(new Set(fallbackQueue));
+    
+    // Adiciona o avatar padrão como último recurso
+    uniqueQueue.push('/avatar.png');
+
+    setUrls(uniqueQueue);
     setCurrentIndex(0);
-  }, [candidato, candidatura]);
+  }, [candidato]);
 
-  // Imprime no console toda vez que tenta carregar uma nova URL da fila
+  // Imprime no console a URL exata que está sendo tentada (ajuda no debug)
   useEffect(() => {
     if (urls.length > 0 && urls[currentIndex]) {
-      console.log(`🖼️ Tentando carregar imagem do candidato [${candidato.nome_completo || candidato.nome_urna}]:`, urls[currentIndex]);
+      console.log(`🖼️ Tentando carregar imagem do candidato [${candidato.nome_completo || candidato.nome_urna || 'Desconhecido'}]:`, urls[currentIndex]);
     }
   }, [urls, currentIndex, candidato.nome_completo, candidato.nome_urna]);
 
@@ -71,7 +82,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
   return (
     <img
       src={srcAtual}
-      alt={alt}
+      alt={alt || "Foto do candidato"}
       className={className}
       onError={handleError}
     />

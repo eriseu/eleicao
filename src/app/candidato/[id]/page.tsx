@@ -35,8 +35,8 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           return;
         }
 
-        // 2️⃣ Chamada para a API do VPS
-        const candsArray = await fetchCandidaturasFromVPS([resolvedParams.id]) || [];
+        // 2️⃣ Chamada para a API do VPS com tipagem explícita any[]
+        const candsArray: any[] = await fetchCandidaturasFromVPS([resolvedParams.id]) || [];
         
         // Ordena o histórico da eleição mais recente para a mais antiga
         const candsOrdenadas = candsArray.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));

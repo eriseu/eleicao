@@ -31,6 +31,10 @@ export default function DueloClient() {
   const hasValidSharedUf = Boolean(
     sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf)
   );
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const [candidates, setCandidates] = useState<Candidato[]>([]);
   const [c1, setC1] = useState<Candidato | null>(null);
@@ -343,6 +347,10 @@ export default function DueloClient() {
     alert('Link copiado para compartilhar seu duelo!');
   };
 
+  if (!isMounted) {
+    return <div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando duelo...</div>;
+  }
+  
   return (
       <main className="min-h-screen bg-slate-950 text-slate-100 pb-32">
         <div className="mx-auto max-w-3xl px-4 py-6">

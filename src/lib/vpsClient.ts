@@ -11,10 +11,18 @@ export async function fetchCandidaturasFromVPS(perfilIds: string[]) {
   if (!perfilIds || perfilIds.length === 0) return [];
 
   try {
-    const response = await fetch(`/api/candidaturas?perfil_id=in.(${perfilIds.join(',')})`);
+    const response = await fetch(`/api/candidaturas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        perfil_id: `in.(${ids.join(',')})` // Ou envie direto como array se preferir
+      })
+    });
     
     if (!response.ok) return [];
-    return await response.json();
+    const data = await response.json();
   } catch (error) {
     console.error('Erro ao buscar candidaturas da VPS:', error);
     return [];

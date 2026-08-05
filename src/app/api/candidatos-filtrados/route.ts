@@ -6,9 +6,16 @@ export async function GET(request: Request) {
   const municipio = searchParams.get('municipio');
 
   try {
-    const vpsUrl = new URL(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados`);
+    const vpsApiUrl = process.env.NEXT_PUBLIC_VPS_API_URL;
+    if (!vpsApiUrl) {
+      return NextResponse.json({ error: 'VPS URL não configurada' }, { status: 500 });
+    }
+
+    const vpsUrl = new URL(`${vpsApiUrl}/api/candidatos-filtrados`);
     vpsUrl.searchParams.append('uf', uf);
-    if (municipio) vpsUrl.searchParams.append('municipio', municipio);
+    if (municipio) {
+      vpsUrl.searchParams.append('municipio', municipio);
+    }
 
     const response = await fetch(vpsUrl.toString(), {
       cache: 'no-store',

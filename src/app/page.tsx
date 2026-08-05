@@ -31,35 +31,26 @@ export default function Home() {
       municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
     };
 
-    let cargos: string[] = [];
+    let cargosPermitidos: string[] = [];
     if (selectedUf === 'BR') {
-      cargos = cargosPorEscopo.nacional;
+      cargosPermitidos = cargosPorEscopo.nacional;
     } else if (selectedMunicipio) {
-      cargos = cargosPorEscopo.municipal;
+      cargosPermitidos = cargosPorEscopo.municipal;
     } else {
-      cargos = [...cargosPorEscopo.estadual, ...cargosPorEscopo.municipal];
+      cargosPermitidos = [...cargosPorEscopo.estadual, ...cargosPorEscopo.municipal];
     }
 
     try {
-      // 1. Buscar perfis de candidatos do Supabase
-      let perfisQuery = supabase
+      // 1. Buscar perfis de candidatos do Supabase (sem usar join restritivo com !inner)
+      const { data: perfis, error: perfisError } = await supabase
         .from('perfis_candidatos')
-        .select('*, candidaturas!inner(ano_eleicao, uf, municipio, cargo)')
-        .in('candidaturas.ano_eleicao', ACTIVE_ELECTION_YEARS)
-        .in('candidaturas.cargo', cargos)
+        .select('*')
         .limit(1000);
-
-      if (selectedUf !== 'BR') {
-        perfisQuery = perfisQuery.eq('candidaturas.uf', selectedUf);
-      }
-      if (selectedMunicipio) {
-        perfisQuery = perfisQuery.eq('candidaturas.municipio', selectedMunicipio);
-      }
-
-      const { data: perfis, error: perfisError } = await perfisQuery;
 
       if (perfisError) {
         console.error('Erro ao buscar perfis:', perfisError.message);
+        setCandidates([]);
+        setPar(null);
         return;
       }
 
@@ -74,17 +65,35 @@ export default function Home() {
       // 2. Buscar candidaturas do VPS para os perfis encontrados
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
-      // 3. Mapear e combinar os dados
+      // 3. Mapear, combinar e filtrar os dados localmente
       const mappedData: Candidato[] = perfis.flatMap((perfil) => {
         const candidaturasDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
         if (candidaturasDoPerfil.length === 0) return [];
 
-        // Encontra a candidatura mais recente ou a primeira disponível
-        const candidaturaAtiva =
-          candidaturasDoPerfil.find((c: any) => (ACTIVE_ELECTION_YEARS as readonly number[]).includes(c.ano_eleicao)) ||
-          candidaturasDoPerfil.sort((a: any, b: any) => b.ano_eleicao - a.ano_eleicao)[0];
+        // Filtra candidaturas de acordo com os anos e cargos permitidos
+        const candidaturasFiltradas = candidaturasDoPerfil.filter((c: any) => {
+          const anoValid = (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao));
+          const cargoValid = cargosPermitidos.includes(c.cargo);
+          const ufValid = selectedUf === 'BR' || c.uf === selectedUf;
+          const munValid = !selectedMunicipio || c.municipio === selectedMunicipio;
+          return anoValid && cargoValid && ufValid && munValid;
+        });
 
-        if (!candidaturaAtiva) return [];
+        if (candidaturasFiltradas.length === 0) return [];
+
+        // Ordena do ano mais recente para o mais antigo
+        const sortedCands = candidaturasFiltradas.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+        const candidaturaAtiva = sortedCands[0];
+
+        // 🔍 Varre o histórico filtrado para encontrar uma foto válida
+        const candidaturaComFoto = sortedCands.find((c: any) => {
+          const foto = c.foto || c.sq_candidato;
+          if (!foto) return false;
+          const fotoStr = String(foto);
+          return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
+        });
+
+        const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaAtiva.foto;
 
         return [{
           id: perfil.id,
@@ -93,21 +102,21 @@ export default function Home() {
           titulo_eleitoral: perfil.titulo_eleitoral,
           created_at: perfil.created_at,
           elo_score: perfil.elo_score || 1200,
+          matches_count: perfil.matches_count || 0,
+          nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
+          partido: candidaturaAtiva?.partido || 'S/P',
+          cargo: candidaturaAtiva?.cargo || 'Não informado',
+          foto: fotoFinal,
+          candidaturas: sortedCands,
           ultima_candidatura: candidaturaAtiva
             ? {
                 ...candidaturaAtiva,
                 perfil_id: perfil.id,
                 created_at: perfil.created_at,
                 sq_candidato: Number(candidaturaAtiva.sq_candidato) || 0,
-                foto: candidaturaAtiva.foto
-                    ?.replace(/_div\.(jpg|jpeg|png)/g, '')
-                    .replace(/[A-Z]/g, ''),
+                foto: fotoFinal,
             }
             : null,
-          nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
-          partido: candidaturaAtiva?.partido || 'S/P',
-          cargo: candidaturaAtiva?.cargo || 'Não informado',
-          matches_count: perfil.matches_count || 0,
         }];
       });
 

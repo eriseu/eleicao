@@ -54,7 +54,7 @@ export default function DueloClient() {
 
     async function loadMunicipios() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
+        const response = await fetch(`/api/candidatos-filtrados?uf=BR`);
         if (!response.ok) {
           console.error("Falha ao buscar municípios do VPS");
           setMunicipios([]);

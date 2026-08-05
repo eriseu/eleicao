@@ -44,7 +44,7 @@ export default function DueloClient() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  // Busca de municípios corrigida usando a API do VPS (baseado no app/page)
+  // Busca de municípios corrigida usando a API correta de municípios por UF
   useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
@@ -54,7 +54,7 @@ export default function DueloClient() {
 
     async function loadMunicipios() {
       try {
-        const response = await fetch(`/api/candidatos-filtrados?uf=BR`);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
         if (!response.ok) {
           console.error("Falha ao buscar municípios do VPS");
           setMunicipios([]);
@@ -64,7 +64,7 @@ export default function DueloClient() {
 
         const uniqueMunicipios = Array.from(
           new Set((data || [])
-            .map((item: any) => (typeof item === 'string' ? item : item.municipio)?.trim())
+            .map((item: any) => item.municipio?.trim())
             .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
         ).sort() as string[];
         

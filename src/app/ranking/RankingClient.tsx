@@ -207,10 +207,10 @@ const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] =>
       setHasMore(data.length === ITEMS_PER_PAGE);
 
       const perfilIds = data.map((p: any) => p.id);
-      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+      const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 
       const candidaturasProcessadas = perfilIds.map((id: any) => {
-        const candsDoPerfil = candidaturas.filter((c: any) => 
+        const candsDoPerfil = (candidaturas as any[]).filter((c: any) =>
           c.perfil_id === id &&
           (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
           cargos.some(cargoPermitido => cargoPermitido.toUpperCase() === c.cargo?.toUpperCase()) &&

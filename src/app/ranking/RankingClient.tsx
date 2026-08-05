@@ -156,7 +156,7 @@ const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] =>
       }];
     });
   };
-  const fetchRankingData = useCallback(async (currentPage: number, cargos: string[]) => {
+  const fetchRankingData = useCallback(async (currentPage: number, cargos: string[], targetHighlightId?: string) => {
     try {
       const queryParams = new URLSearchParams();
       queryParams.append('uf', selectedUf);
@@ -171,8 +171,28 @@ const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] =>
       const perfilIdsVps: string[] = await response.json();
       if (!perfilIdsVps || perfilIdsVps.length === 0) return [];
 
-      const from = currentPage * ITEMS_PER_PAGE;
-      
+      // Se temos um candidato destacado, vamos descobrir a página exata dele
+      let actualPage = currentPage;
+      if (targetHighlightId && perfilIdsVps.includes(targetHighlightId)) {
+        // Busca a lista ordenada do Supabase para achar o índice exato
+        const { data: allRankedIds } = await supabase.rpc('get_ranking_paginado', {
+          ids: perfilIdsVps,
+          limite: perfilIdsVps.length,
+          deslocamento: 0
+        });
+        
+        if (allRankedIds) {
+          const index = allRankedIds.findIndex((p: any) => p.id === targetHighlightId);
+          if (index !== -1) {
+            actualPage = Math.floor(index / ITEMS_PER_PAGE);
+            if (actualPage !== page) {
+              setPage(actualPage); // Sincroniza a página do paginador
+            }
+          }
+        }
+      }
+
+      const from = actualPage * ITEMS_PER_PAGE;
       const { data, error } = await supabase.rpc('get_ranking_paginado', {
         ids: perfilIdsVps,
         limite: ITEMS_PER_PAGE,
@@ -208,7 +228,22 @@ const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] =>
       console.error('Erro ao buscar dados do ranking:', err);
       return [];
     }
-  }, [selectedUf, selectedMunicipio]);
+  }, [selectedUf, selectedMunicipio, page]);
+
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const loadRanking = async () => {
+      setLoading(true);
+      const cargos = getCargosPorEscopo();
+
+      const rankingData = await fetchRankingData(page, cargos, highlightedId);
+      setRanking(rankingData);
+      setLoading(false);
+    };
+
+    void loadRanking();
+  }, [isMounted, highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
   useEffect(() => {
     if (!isMounted) return;

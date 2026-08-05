@@ -289,7 +289,11 @@ export default function DueloClient() {
   const getRankingUrl = (candidate: Candidato) => {
     const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
     const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
-    const params = new URLSearchParams({ uf, highlight: candidate.id });
+    
+    const params = new URLSearchParams({ 
+      uf, 
+      highlight: candidate.id 
+    });
 
     if (uf !== 'BR' && municipio && municipio.toUpperCase() !== uf.toUpperCase()) {
       params.set('municipio', municipio);

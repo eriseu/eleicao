@@ -61,11 +61,18 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        // Busca os IDs através da API interna do Next.js (evita CORS e protege o VPS)
+        // Define os cargos com base no contexto (igual ao DueloClient) para atender aos filtros obrigatórios da VPS
+        const cargosPadrao = uf === 'BR' 
+          ? ['PRESIDENTE', 'VICE-PRESIDENTE'] 
+          : municipio 
+            ? ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR']
+            : ['DEPUTADO ESTADUAL', 'DEPUTADO FEDERAL', 'GOVERNADOR', 'VICE-GOVERNADOR', 'SENADOR', 'PREFEITO', 'VICE-PREFEITO', 'VEREADOR'];
+
         let perfilIdsVps: string[] = [];
         try {
           const queryParams = new URLSearchParams();
           queryParams.append('uf', uf);
+          cargosPadrao.forEach(cargo => queryParams.append('cargos', cargo));
           if (municipio) {
             queryParams.append('municipio', municipio);
           }
@@ -86,14 +93,24 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        // Pega uma amostra dos perfis no Supabase para cruzar com os dados do VPS
-        const idsAmostra = perfilIdsVps.slice(0, 100);
-        const { data: perfisFinais, error: perfilError } = await supabase
-          .from('perfis_candidatos')
-          .select('*')
-          .in('id', idsAmostra);
+        // Busca em lotes no Supabase para garantir que qualquer candidato da lista possa ser encontrado
+        const batchSize = 500;
+        let perfisFinais: any[] = [];
 
-        if (perfilError || !perfisFinais || perfisFinais.length === 0) {
+        for (let i = 0; i < perfilIdsVps.length; i += batchSize) {
+          if (cancelled) break;
+          const batchIds = perfilIdsVps.slice(i, i + batchSize);
+          const { data: perfisBatch, error: perfilError } = await supabase
+            .from('perfis_candidatos')
+            .select('*')
+            .in('id', batchIds);
+
+          if (!perfilError && perfisBatch) {
+            perfisFinais = [...perfisFinais, ...perfisBatch];
+          }
+        }
+
+        if (perfisFinais.length === 0 || cancelled) {
           if (!cancelled) {
             setResults([]);
             setLoading(false);
@@ -123,7 +140,7 @@ export default function CandidateAutocomplete({
           const nomeCompleto = (perfil.nome_completo || '').toLowerCase();
           const nomeUrna = (candidaturaPrincipal.nome_urna || '').toLowerCase();
 
-          // Filtra localmente por nome completo ou nome de urna para garantir precisão sem estourar o banco
+          // Filtra localmente por nome completo ou nome de urna
           const matchTexto = nomeCompleto.includes(termLower) || nomeUrna.includes(termLower);
           if (!matchTexto) return [];
 
@@ -190,7 +207,6 @@ export default function CandidateAutocomplete({
       window.clearTimeout(timeout);
     };
   }, [disabled, excludeId, municipio, query, selected, uf]);
-
   return (
     <label className="relative block">
       <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">{label}</span>

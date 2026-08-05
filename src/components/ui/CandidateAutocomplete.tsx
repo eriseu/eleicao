@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ACTIVE_ELECTION_YEARS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import type { Candidato } from '@/types';
 
 interface CandidateAutocompleteProps {
@@ -14,26 +14,6 @@ interface CandidateAutocompleteProps {
   excludeId?: string;
   disabled?: boolean;
 }
-
-const candidateSelection = `
-  foto,
-  nome_urna,
-  partido,
-  cargo,
-  ano_eleicao,
-  uf,
-  municipio,
-  sq_candidato,
-  perfis_candidatos!perfil_id (
-    id,
-    nome_completo,
-    cpf,
-    titulo_eleitoral,
-    created_at,
-    elo_score,
-    matches_count
-  )
-`;
 
 function candidateLabel(candidate: Candidato) {
   const name = candidate.nome_urna || candidate.nome_completo;
@@ -71,70 +51,103 @@ export default function CandidateAutocomplete({
     const timeout = window.setTimeout(async () => {
       setLoading(true);
 
-      let profilesQuery = supabase
-        .from('perfis_candidatos')
-        .select('id')
-        .ilike('nome_completo', `%${term}%`)
-        .limit(20);
-      const profileResult = await profilesQuery;
-      const profileIds = (profileResult.data || []).map((profile) => profile.id);
+      try {
+        const sanitizedTerm = term.replace(/[()[\]{}]/g, '').trim();
+        if (!sanitizedTerm) {
+          if (!cancelled) {
+            setResults([]);
+            setLoading(false);
+          }
+          return;
+        }
 
-      let nameQuery = supabase
-        .from('candidaturas')
-        .select(candidateSelection)
-        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-        .eq('uf', uf)
-        .ilike('nome_urna', `%${term}%`)
-        .limit(20);
-      let profileCandidateQuery = supabase
-        .from('candidaturas')
-        .select(candidateSelection)
-        .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-        .eq('uf', uf)
-        .in('perfil_id', profileIds.length > 0 ? profileIds : ['00000000-0000-0000-0000-000000000000'])
-        .limit(20);
+        const { data: perfisData, error: perfilError } = await supabase
+          .from('perfis_candidatos')
+          .select('*')
+          .ilike('nome_completo', `%${sanitizedTerm}%`)
+          .limit(25);
 
-      if (uf !== 'BR' && municipio) {
-        nameQuery = nameQuery.eq('municipio', municipio);
-        profileCandidateQuery = profileCandidateQuery.eq('municipio', municipio);
-      }
+        if (perfilError || !perfisData || perfisData.length === 0) {
+          if (!cancelled) {
+            setResults([]);
+            setLoading(false);
+          }
+          return;
+        }
 
-      const [nameResult, fullNameResult] = await Promise.all([nameQuery, profileCandidateQuery]);
-      if (cancelled) return;
+        const perfilIds = perfisData.map((p: any) => p.id);
+        const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
-      const included = new Set<string>();
-      const mapped = [...(nameResult.data || []), ...(fullNameResult.data || [])].flatMap((candidatura) => {
-        const perfil = Array.isArray(candidatura.perfis_candidatos)
-          ? candidatura.perfis_candidatos[0]
-          : candidatura.perfis_candidatos;
-        if (!perfil || perfil.id === excludeId || included.has(perfil.id)) return [];
-        included.add(perfil.id);
+        if (cancelled) return;
 
-        return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score || 0,
-          matches_count: perfil.matches_count || 0,
-          nome_urna: candidatura.nome_urna || perfil.nome_completo,
-          partido: candidatura.partido || 'S/P',
-          cargo: candidatura.cargo,
-          uf: candidatura.uf,
-          municipio: candidatura.municipio,
-          ultima_candidatura: {
-            ...candidatura,
-            perfil_id: perfil.id,
+        const perfisIncluidos = new Set<string>();
+        const mapped = perfisData.flatMap((perfil: any) => {
+          if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id) || perfil.id === excludeId) {
+            return [];
+          }
+          
+          const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+          if (candsDoPerfil.length === 0) return [];
+
+          const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+          const candidaturaPrincipal = sortedCands[0];
+
+          if (uf !== 'BR' && candidaturaPrincipal.uf !== uf) {
+            return [];
+          }
+          if (municipio && candidaturaPrincipal.municipio !== municipio) {
+            return [];
+          }
+
+          perfisIncluidos.add(perfil.id);
+
+          const candidaturaComFoto = sortedCands.find((c: any) => {
+            const foto = c.foto || c.sq_candidato;
+            if (!foto) return false;
+            const fotoStr = String(foto);
+            return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
+          });
+
+          const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
+
+          return [{
+            id: perfil.id,
+            nome_completo: perfil.nome_completo,
+            cpf: perfil.cpf,
+            titulo_eleitoral: perfil.titulo_eleitoral,
             created_at: perfil.created_at,
-            sq_candidato: candidatura.sq_candidato || candidatura.foto,
-          },
-        }];
-      }).sort((a, b) => candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR'));
+            elo_score: perfil.elo_score ?? 1200,
+            matches_count: perfil.matches_count ?? 0,
+            nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
+            partido: candidaturaPrincipal.partido || 'S/P',
+            cargo: candidaturaPrincipal.cargo,
+            ano_eleicao: candidaturaPrincipal.ano_eleicao,
+            uf: candidaturaPrincipal.uf,
+            municipio: candidaturaPrincipal.municipio,
+            foto: fotoFinal,
+            candidaturas: sortedCands,
+            ultima_candidatura: {
+              ...candidaturaPrincipal,
+              foto: fotoFinal,
+              perfil_id: perfil.id,
+              created_at: perfil.created_at,
+              sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
+            },
+          }];
+        }).sort((a, b) => candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR'));
 
-      setResults(mapped.slice(0, 20));
-      setLoading(false);
-      setOpen(true);
+        if (!cancelled) {
+          setResults(mapped.slice(0, 20));
+          setLoading(false);
+          setOpen(true);
+        }
+      } catch (err) {
+        console.error('Erro no Autocomplete:', err);
+        if (!cancelled) {
+          setResults([]);
+          setLoading(false);
+        }
+      }
     }, 300);
 
     return () => {

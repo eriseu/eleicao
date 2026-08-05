@@ -119,7 +119,7 @@ export default function CandidateAutocomplete({
         }
 
         const validPerfilIds = perfisFinais.map((p: any) => p.id);
-        const candidaturas = await fetchCandidaturasFromVPS(validPerfilIds);
+        const candidaturas = (await fetchCandidaturasFromVPS(validPerfilIds)) || [];
 
         if (cancelled) return;
 
@@ -131,7 +131,7 @@ export default function CandidateAutocomplete({
             return [];
           }
 
-          const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+          const candsDoPerfil = (candidaturas as any[]).filter((c: any) => c.perfil_id === perfil.id);
           if (candsDoPerfil.length === 0) return [];
 
           const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));

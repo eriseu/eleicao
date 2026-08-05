@@ -1,12 +1,25 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
-import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
+import { AVAILABLE_UFS } from '@/constants/elections';
+
+const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
+  nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+  estadual: [
+    'DEPUTADO ESTADUAL',
+    'DEPUTADO FEDERAL',
+    'GOVERNADOR',
+    'VICE-GOVERNADOR',
+    'SENADOR',
+  ],
+  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+};
 
 export default function DueloClient() {
   const router = useRouter();
@@ -18,6 +31,7 @@ export default function DueloClient() {
   const hasValidSharedUf = Boolean(
     sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf)
   );
+
   const [candidates, setCandidates] = useState<Candidato[]>([]);
   const [c1, setC1] = useState<Candidato | null>(null);
   const [c2, setC2] = useState<Candidato | null>(null);
@@ -25,173 +39,188 @@ export default function DueloClient() {
     sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf) ? sharedUf : 'BR'
   );
   const [selectedMunicipio, setSelectedMunicipio] = useState('');
+  const [municipios, setMunicipios] = useState<string[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
+  // Busca de municípios corrigida usando a API do VPS (baseado no app/page)
   useEffect(() => {
-    let cancelled = false;
+    if (selectedUf === 'BR') {
+      setMunicipios([]);
+      setSelectedMunicipio('');
+      return;
+    }
 
-    async function loadData() {
-      const cargosPorEscopo: { [key: string]: string[] } = {
-        nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
-        estadual: [
-          'DEPUTADO ESTADUAL',
-          'DEPUTADO FEDERAL',
-          'GOVERNADOR',
-          'VICE-GOVERNADOR',
-          'SENADOR',
-        ],
-        municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
-      };
+    async function loadMunicipios() {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
+        if (!response.ok) {
+          console.error("Falha ao buscar municípios do VPS");
+          setMunicipios([]);
+          return;
+        }
+        const data = await response.json();
 
-      let cargos: string[] = [];
+        const uniqueMunicipios = Array.from(
+          new Set((data || [])
+            .map((item: any) => (typeof item === 'string' ? item : item.municipio)?.trim())
+            .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
+        ).sort() as string[];
+        
+        setMunicipios(uniqueMunicipios);
+      } catch (error) {
+        console.error("Erro ao carregar municípios:", error);
+        setMunicipios([]);
+      }
+    }
 
-      setLoadingCandidates(true);
-      const candidateSelection = `
-            foto,
-            nome_urna,
-            partido,
-            cargo,
-            ano_eleicao,
-            uf,
-            municipio,
-            sq_candidato,
-            perfis_candidatos!perfil_id (
-              id,
-              nome_completo,
-              cpf,
-              titulo_eleitoral,
-              created_at,
-              elo_score,
-              matches_count
-            )
-          `;
-      const results = isSharedDuel
-        ? await Promise.all([
-            (() => {
-              const sharedRequest = supabase
-                .from('candidaturas')
-                .select(candidateSelection)
-                .in('ano_eleicao', [...ACTIVE_ELECTION_YEARS])
-                .in('perfil_id', [sharedC1Id!, sharedC2Id!])
-                .order('ano_eleicao', { ascending: false });
-              return hasValidSharedUf ? sharedRequest.eq('uf', sharedUf!) : sharedRequest;
-            })(),
-          ])
-        : await Promise.all(ACTIVE_ELECTION_YEARS.map(async (ano) => {
-            const rows = [];
-            const batchSize = 1000; // Aumentado para buscar mais candidatos por vez
+    void loadMunicipios();
+  }, [selectedUf]);
 
-            for (let from = 0; ; from += batchSize) {
-              if (selectedUf === 'BR') {
-                cargos = cargosPorEscopo.nacional;
-              } else if (selectedMunicipio) {
-                cargos = cargosPorEscopo.municipal;
-              } else {
-                cargos = cargosPorEscopo.estadual;
-              }
+  const getCargosPorEscopo = useCallback(() => {
+    if (selectedUf === 'BR') {
+      return CARGOS_POR_ESCOPO.nacional;
+    }
+    if (selectedMunicipio) {
+      return CARGOS_POR_ESCOPO.municipal;
+    }
+    return [...CARGOS_POR_ESCOPO.estadual, ...CARGOS_POR_ESCOPO.municipal];
+  }, [selectedUf, selectedMunicipio]);
 
-              let query = supabase
-              .from('candidaturas')
-              .select(candidateSelection)
-              .eq('ano_eleicao', ano);
+  // Função robusta de mapeamento e tratamento de fotos idêntica ao app/page
+  const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
+    const perfisIncluidos = new Set<string>();
+    return perfis.flatMap((perfil) => {
+      if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
+        return [];
+      }
+      perfisIncluidos.add(perfil.id);
 
-              if (selectedUf !== 'BR') {
-                query = query.eq('uf', selectedUf);
-              }
+      const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+      if (candsDoPerfil.length === 0) return [];
 
-              if (selectedMunicipio) {
-                query = query.eq('municipio', selectedMunicipio);
-              }
+      const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+      const candidaturaPrincipal = sortedCands[0];
 
-              const result = await query.in('cargo', cargos).range(from, from + batchSize - 1);
-              if (result.error || !result.data) return result;
-              rows.push(...result.data);
-              if (result.data.length < batchSize) break;
-            }
+      const candidaturaComFoto = sortedCands.find((c: any) => {
+        const foto = c.foto || c.sq_candidato;
+        if (!foto) return false;
+        const fotoStr = String(foto);
+        return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
+      });
 
-            return { data: rows, error: null };
-          }));
+      const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
 
-      const failedResult = results.find(({ error }) => error);
+      return [{
+        id: perfil.id,
+        nome_completo: perfil.nome_completo,
+        cpf: perfil.cpf,
+        titulo_eleitoral: perfil.titulo_eleitoral,
+        created_at: perfil.created_at,
+        elo_score: perfil.elo_score ?? 1200,
+        matches_count: perfil.matches_count ?? 0,
+        nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
+        partido: candidaturaPrincipal.partido || 'S/P',
+        cargo: candidaturaPrincipal.cargo,
+        ano_eleicao: candidaturaPrincipal.ano_eleicao,
+        uf: candidaturaPrincipal.uf,
+        municipio: candidaturaPrincipal.municipio,
+        foto: fotoFinal,
+        candidaturas: sortedCands,
+        ultima_candidatura: {
+          ...candidaturaPrincipal,
+          foto: fotoFinal,
+          perfil_id: perfil.id,
+          created_at: perfil.created_at,
+          sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
+        },
+      }];
+    });
+  };
 
-      if (failedResult?.error) {
-        console.error('Erro ao buscar candidatos para o duelo:', failedResult.error.message);
-        if (!cancelled) {
+  // Lógica de carregamento integrada com VPS e Supabase
+  const loadData = useCallback(async () => {
+    setLoadingCandidates(true);
+    try {
+      if (isSharedDuel) {
+        const { data: perfisData, error } = await supabase
+          .from('perfis_candidatos')
+          .select('*')
+          .in('id', [sharedC1Id!, sharedC2Id!]);
+
+        if (error || !perfisData) {
           setCandidates([]);
           setLoadingCandidates(false);
+          return;
+        }
+
+        const candidaturas = await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!]);
+        const mappedDataFinal = processCandidaturas(perfisData, candidaturas);
+        setCandidates(mappedDataFinal);
+        setLoadingCandidates(false);
+        if (!hasValidSharedUf && mappedDataFinal[0]?.uf) {
+          setSelectedUf(mappedDataFinal[0].uf);
         }
         return;
       }
 
-      const data = results.flatMap((result) => result.data || []);
-
-      const perfisIncluidos = new Set<string>();
-      const mappedData = data.flatMap((candidaturaAtiva) => {
-        const perfil = Array.isArray(candidaturaAtiva.perfis_candidatos)
-          ? candidaturaAtiva.perfis_candidatos[0]
-          : candidaturaAtiva.perfis_candidatos;
-        if (!perfil || perfisIncluidos.has(perfil.id)) return [];
-        perfisIncluidos.add(perfil.id);
-
-        return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score || 0,
-          matches_count: perfil.matches_count || 0,
-          nome_urna: candidaturaAtiva?.nome_urna || perfil.nome_completo,
-          partido: candidaturaAtiva?.partido || 'S/P',
-          cargo: candidaturaAtiva?.cargo || 'Não informado',
-          uf: candidaturaAtiva.uf || 'BR',
-          municipio: candidaturaAtiva.municipio || 'Não informado',
-          ultima_candidatura: candidaturaAtiva
-            ? {
-                ...candidaturaAtiva,
-                perfil_id: perfil.id,
-                created_at: perfil.created_at,
-                uf: candidaturaAtiva.uf || 'BR',
-                municipio: candidaturaAtiva.municipio || 'Não informado',
-                sq_candidato: candidaturaAtiva.sq_candidato || candidaturaAtiva.foto,
-              }
-            : null,
-        }];
-      });
-
-      if (cancelled) return;
-      setCandidates(mappedData);
-      setLoadingCandidates(false);
-      if (isSharedDuel && !hasValidSharedUf && mappedData[0]?.uf) {
-        setSelectedUf(mappedData[0].uf);
+      const cargos = getCargosPorEscopo();
+      const queryParams = new URLSearchParams();
+      queryParams.append('uf', selectedUf);
+      cargos.forEach(cargo => queryParams.append('cargos', cargo));
+      if (selectedMunicipio) {
+        queryParams.append('municipio', selectedMunicipio);
       }
-    }
 
+      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+      if (!response.ok) {
+        setCandidates([]);
+        setLoadingCandidates(false);
+        return;
+      }
+
+      const perfilIdsVps: string[] = await response.json();
+      if (!perfilIdsVps || perfilIdsVps.length === 0) {
+        setCandidates([]);
+        setLoadingCandidates(false);
+        return;
+      }
+
+      const idsAmostra = perfilIdsVps.slice(0, 300); // Amostra robusta para alimentar o autocompletar e o duelo
+      const { data: perfisData, error } = await supabase
+        .from('perfis_candidatos')
+        .select('*')
+        .in('id', idsAmostra);
+
+      if (error || !perfisData || perfisData.length === 0) {
+        setCandidates([]);
+        setLoadingCandidates(false);
+        return;
+      }
+
+      const perfilIds = perfisData.map((p: any) => p.id);
+      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+
+      const mappedDataFinal = processCandidaturas(perfisData, candidaturas);
+      setCandidates(mappedDataFinal);
+    } catch (error) {
+      console.error('Erro ao buscar candidatos para o duelo:', error);
+      setCandidates([]);
+    } finally {
+      setLoadingCandidates(false);
+    }
+  }, [isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo, hasValidSharedUf, sharedC1Id, sharedC2Id]);
+
+  useEffect(() => {
     void loadData();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasValidSharedUf, isSharedDuel, selectedMunicipio, selectedUf, sharedC1Id, sharedC2Id, sharedUf]);
+  }, [loadData]);
 
   const getCandidateLabel = (candidate: Candidato) => {
     const nome = candidate.ultima_candidatura?.nome_urna || candidate.nome_urna || candidate.nome_completo;
     const partido = candidate.ultima_candidatura?.partido || candidate.partido;
     return `${nome}${partido ? ` (${partido})` : ''}`;
   };
-
-  const municipioOptions = useMemo(() => {
-    if (selectedUf === 'BR') return [];
-    return Array.from(
-      new Set(
-        candidates
-          .filter((candidate) => candidate.uf === selectedUf)
-          .map((candidate) => candidate.municipio)
-          .filter(Boolean)
-      )
-    ).sort();
-  }, [candidates, selectedUf]);
 
   const filteredCandidates = useMemo(() => {
     if (isSharedDuel) return candidates;
@@ -351,7 +380,7 @@ export default function DueloClient() {
                   disabled={isSharedDuel || selectedUf === 'BR'}
                 >
                   <option value="">Todos</option>
-                  {municipioOptions.map((municipio) => (
+                  {municipios.map((municipio) => (
                     <option key={municipio} value={municipio}>{municipio}</option>
                   ))}
                 </select>
@@ -363,7 +392,7 @@ export default function DueloClient() {
                   <p className="mt-2 text-sm text-white">
                     {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
                   </p>
-                  <p className="mt-2 text-sm text-slate-300">Candidatos pesquisados sob demanda</p>
+                  <p className="mt-2 text-sm text-slate-300">Candidatos sincronizados via VPS</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button

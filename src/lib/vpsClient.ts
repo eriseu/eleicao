@@ -1,6 +1,6 @@
 import { Candidatura } from "@/types";
 
-const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL;
+const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
 
 /**
  * Busca os dados de candidaturas da API no VPS para uma lista de IDs de perfis.
@@ -11,7 +11,7 @@ export async function fetchCandidaturasFromVPS(perfilIds: string[]) {
   if (!perfilIds || perfilIds.length === 0) return [];
 
   try {
-    const response = await fetch(`/api/candidaturas`, {
+    const response = await fetch(`${VPS_API_URL}/api/candidaturas`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

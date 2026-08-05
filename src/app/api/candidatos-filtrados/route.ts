@@ -6,15 +6,12 @@ export async function GET(request: Request) {
   const municipio = searchParams.get('municipio');
 
   try {
-    const vpsApiUrl = process.env.NEXT_PUBLIC_VPS_API_URL;
-    if (!vpsApiUrl) {
-      return NextResponse.json({ error: 'VPS URL não configurada' }, { status: 500 });
-    }
-
+    const vpsApiUrl = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
     const vpsUrl = new URL(`${vpsApiUrl}/api/candidatos-filtrados`);
+    
     vpsUrl.searchParams.append('uf', uf);
     
-    // Repassa os cargos exigidos pela API do FastAPI no VPS
+    // Injeta os cargos obrigatórios exigidos pelo FastAPI da VPS
     const cargosPadrao = ['PRESIDENTE', 'GOVERNADOR', 'SENADOR', 'DEPUTADO FEDERAL', 'DEPUTADO ESTADUAL', 'PREFEITO', 'VEREADOR'];
     cargosPadrao.forEach(cargo => {
       vpsUrl.searchParams.append('cargos', cargo);
@@ -29,6 +26,8 @@ export async function GET(request: Request) {
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Erro retornado pela VPS:', errorText);
       return NextResponse.json({ error: 'Erro no servidor VPS' }, { status: response.status });
     }
 

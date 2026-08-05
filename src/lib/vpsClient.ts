@@ -11,7 +11,7 @@ export async function fetchCandidaturasFromVPS(perfilIds: string[]) {
   if (!perfilIds || perfilIds.length === 0) return [];
 
   try {
-    const response = await fetch(`/api/vps/candidaturas?perfil_id=in.(${perfilIds.join(',')})`);
+    const response = await fetch(`/api/candidaturas?perfil_id=in.(${perfilIds.join(',')})`);
     
     if (!response.ok) return [];
     return await response.json();

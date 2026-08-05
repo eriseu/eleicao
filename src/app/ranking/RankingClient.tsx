@@ -41,10 +41,18 @@ const ITEMS_PER_PAGE = 10;
 function RankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  
+  // Controle de hidratação para evitar o Erro #418 do React
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const requestedUf = searchParams.get('uf')?.toUpperCase();
   const initialUf = requestedUf && AVAILABLE_UFS.some(uf => uf === requestedUf)
     ? requestedUf 
     : 'BR';
+
   const [ranking, setRanking] = useState<Candidato[]>([]);
   const [page, setPage] = useState(0);
   const [municipios, setMunicipios] = useState<string[]>([]);
@@ -103,15 +111,12 @@ function RankingContent() {
       }
       perfisIncluidos.add(perfil.id);
 
-      // Filtra todas as candidaturas do perfil para encontrar a mais recente e também buscar foto em anos anteriores se necessário[cite: 2]
       const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
       if (candsDoPerfil.length === 0) return [];
 
-      // Ordena por ano decrescente para pegar a mais recente elegível
       const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
       const candidaturaPrincipal = sortedCands[0];
 
-      // Procura a foto mais recente disponível entre todas as candidaturas do histórico caso a atual esteja sem foto[cite: 2]
       const candidaturaComFoto = sortedCands.find((c: any) => c.foto && c.foto.trim() !== '');
       const fotoFinal = candidaturaComFoto ? candidaturaComFoto.foto : candidaturaPrincipal.foto;
 
@@ -158,7 +163,6 @@ function RankingContent() {
 
       const from = currentPage * ITEMS_PER_PAGE;
       
-      // Busca apenas os perfis da página atual direto no banco (Paginação real via RPC)
       const { data, error } = await supabase.rpc('get_ranking_paginado', {
         ids: perfilIdsVps,
         limite: ITEMS_PER_PAGE,
@@ -197,6 +201,8 @@ function RankingContent() {
   }, [selectedUf, selectedMunicipio]);
 
   useEffect(() => {
+    if (!isMounted) return;
+
     const loadRanking = async () => {
       setLoading(true);
       const cargos = getCargosPorEscopo();
@@ -220,7 +226,7 @@ function RankingContent() {
     };
 
     void loadRanking();
-  }, [highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
+  }, [isMounted, highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
   useEffect(() => {
     if (!highlightedId || loading) return;
@@ -231,11 +237,12 @@ function RankingContent() {
   }, [highlightedId, loading, ranking]);
 
   useEffect(() => {
+    if (!isMounted) return;
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
     router.replace(`/ranking?${params.toString()}`);
-  }, [selectedUf, selectedMunicipio, router]);
+  }, [isMounted, selectedUf, selectedMunicipio, router]);
 
   useEffect(() => {
     setPage(0);
@@ -273,6 +280,10 @@ function RankingContent() {
       }
     }
   };
+
+  if (!isMounted) {
+    return <div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando ranking...</div>;
+  }
 
   return (
       <main className="bg-slate-950 text-slate-100 pb-28">

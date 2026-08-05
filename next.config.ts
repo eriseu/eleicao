@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/api/vps/:path*",
+        destination: "https://api.centraleti.br/api/:path*",
+      },
+    ];
+  },
   async headers() {
     return [
       {

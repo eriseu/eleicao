@@ -174,7 +174,7 @@ function RankingContent() {
       }).filter(Boolean);
 
       const perfisValidosIds = new Set(candidaturasProcessadas.map((c: any) => c.perfil_id));
-      const perfisFiltrados = perfis.filter(p => perfisValidosIds.has(p.id));
+      const perfisFiltrados = data.filter((p: any) => perfisValidosIds.has(p.id));
 
       return processCandidaturas(perfisFiltrados, candidaturasProcessadas);
     } catch (err) {

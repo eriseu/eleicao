@@ -159,8 +159,8 @@ export default function DueloClient() {
           return;
         }
 
-        const candidaturas = await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!]);
-        const mappedDataFinal = processCandidaturas(perfisData, candidaturas);
+        const candidaturas = (await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!])) || [];
+        const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
         setCandidates(mappedDataFinal);
         setLoadingCandidates(false);
         if (!hasValidSharedUf && mappedDataFinal[0]?.uf) {
@@ -204,9 +204,9 @@ export default function DueloClient() {
       }
 
       const perfilIds = perfisData.map((p: any) => p.id);
-      const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+      const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 
-      const mappedDataFinal = processCandidaturas(perfisData, candidaturas);
+      const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
       setCandidates(mappedDataFinal);
     } catch (error) {
       console.error('Erro ao buscar candidatos para o duelo:', error);

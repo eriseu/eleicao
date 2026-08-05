@@ -162,7 +162,7 @@ function RankingContent() {
       const perfilIds = perfisPaginados.map((p: any) => p.id);
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
 
-      const candidaturasProcessadas = perfilIds.map(id => {
+      const candidaturasProcessadas = perfilIds.map((id: any) => {
         const candsDoPerfil = candidaturas.filter((c: any) => 
           c.perfil_id === id &&
           (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&

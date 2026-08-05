@@ -14,6 +14,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   const resolvedParams = React.use(params);
   
   const [candidato, setCandidato] = useState<any | null>(null);
+  const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,11 +36,15 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         }
 
         // 2️⃣ Chamada para a API do VPS
-        const candsArray = await fetchCandidaturasFromVPS([resolvedParams.id]);
+        const candsArray = await fetchCandidaturasFromVPS([resolvedParams.id]) || [];
         
-        const candidaturaAtiva = (candsArray as any[]).find((c: any) => c.ano_eleicao === 2024) || candsArray[0];
+        // Ordena o histórico da eleição mais recente para a mais antiga
+        const candsOrdenadas = candsArray.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+        setHistoricoCandidaturas(candsOrdenadas);
 
-        // 3️⃣ Agrupamento dos dados
+        const candidaturaAtiva = candsOrdenadas.find((c: any) => c.ano_eleicao === 2024) || candsOrdenadas[0];
+
+        // 3️⃣ Agrupamento dos dados principais
         setCandidato({
           ...cand,
           nome_urna: candidaturaAtiva?.nome_urna || cand.nome_completo,
@@ -131,14 +136,34 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           )}
         </div>
 
-        {/* Linha do Tempo / Próximos dados */}
-        <div className="w-full mt-5 bg-slate-50 border border-slate-100 rounded-2xl p-3 text-center">
-          <span className="inline-block text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md mb-1">
-            Linha do Tempo
-          </span>
-          <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-            Dados demográficos complementares, bens declarados e prestações de contas oficiais do TSE serão indexados automaticamente em futuras atualizações.
-          </p>
+        {/* Histórico de Candidaturas */}
+        <div className="w-full mt-6 border-t pt-4">
+          <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Histórico de Candidaturas</h3>
+          
+          {historicoCandidaturas.length > 0 ? (
+            <div className="space-y-2.5">
+              {historicoCandidaturas.map((cand: any, index: number) => (
+                <div key={index} className="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex items-center justify-between text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-800">{cand.ano_eleicao}</span>
+                      <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">
+                        {cand.cargo}
+                      </span>
+                    </div>
+                    <p className="text-slate-500 mt-1">
+                      {cand.partido} • {cand.municipio} ({cand.uf})
+                    </p>
+                  </div>
+                  <div className="text-right font-mono text-[10px] text-slate-400">
+                    {cand.sg_ue || ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 text-center py-2">Nenhum histórico adicional encontrado.</p>
+          )}
         </div>
 
       </div>

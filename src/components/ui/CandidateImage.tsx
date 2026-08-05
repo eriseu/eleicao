@@ -39,7 +39,24 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       }
 
       if (fotoStr && fotoStr !== 'avatar.png' && fotoStr !== 'avatar') {
-        // Se a referência já contiver extensão ou formato completo, tenta usá-la diretamente nos domínios
+        // Limpa a extensão atual do nome para podermos testar variações de extensão (.jpg, .jpeg, .png)
+        const nomeBase = fotoStr.replace(/\.(jpg|jpeg|png)$/i, '');
+
+        const extensoesPossiveis = ['jpg', 'jpeg', 'png'];
+
+        // Se for de 2022 para frente, testa no domínio fotos.centraleti.com.br
+        if (ano >= 2022) {
+          extensoesPossiveis.forEach(ext => {
+            fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${nomeBase}.${ext}`);
+          });
+        }
+
+        // Testa no domínio f.centraleti.com.br/f/
+        extensoesPossiveis.forEach(ext => {
+          fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${nomeBase}.${ext}`);
+        });
+
+        // Adiciona também o nome exato original que veio do banco caso ele já possua alguma formatação específica
         if (ano >= 2022) {
           fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${fotoStr}`);
         }

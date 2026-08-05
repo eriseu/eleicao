@@ -17,12 +17,13 @@ export async function fetchCandidaturasFromVPS(perfilIds: string[]) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        perfil_id: `in.(${ids.join(',')})` // Ou envie direto como array se preferir
+        perfil_id: `in.(${perfilIds.join(',')})`
       })
     });
     
     if (!response.ok) return [];
     const data = await response.json();
+    return data || [];
   } catch (error) {
     console.error('Erro ao buscar candidaturas da VPS:', error);
     return [];

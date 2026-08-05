@@ -61,13 +61,44 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        const { data: perfisData, error: perfilError } = await supabase
-          .from('perfis_candidatos')
-          .select('*')
-          .ilike('nome_completo', `%${sanitizedTerm}%`)
-          .limit(25);
+        // 1. Busca por nome_completo no Supabase (com tratamento seguro de erro)
+        let perfilIds: string[] = [];
+        try {
+          const { data: perfisData } = await supabase
+            .from('perfis_candidatos')
+            .select('id')
+            .ilike('nome_completo', `%${sanitizedTerm}%`)
+            .limit(20);
 
-        if (perfilError || !perfisData || perfisData.length === 0) {
+          if (perfisData) {
+            perfilIds = perfisData.map((p: any) => p.id);
+          }
+        } catch (e) {
+          console.warn('Erro ao buscar por nome_completo no Supabase:', e);
+        }
+
+        // 2. Busca por nome_urna diretamente na API do VPS
+        let perfilIdsVpsPorNomeUrna: string[] = [];
+        try {
+          const queryParams = new URLSearchParams();
+          queryParams.append('uf', uf);
+          queryParams.append('nome_urna', sanitizedTerm);
+          if (municipio) {
+            queryParams.append('municipio', municipio);
+          }
+
+          const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+          if (response.ok) {
+            perfilIdsVpsPorNomeUrna = await response.json();
+          }
+        } catch (e) {
+          console.warn('Erro ao buscar por nome_urna no VPS:', e);
+        }
+
+        // Unifica todos os IDs encontrados (tanto do nome completo quanto da urna)
+        const todosIds = Array.from(new Set([...perfilIds, ...perfilIdsVpsPorNomeUrna]));
+
+        if (todosIds.length === 0) {
           if (!cancelled) {
             setResults([]);
             setLoading(false);
@@ -75,17 +106,32 @@ export default function CandidateAutocomplete({
           return;
         }
 
-        const perfilIds = perfisData.map((p: any) => p.id);
-        const candidaturas = await fetchCandidaturasFromVPS(perfilIds);
+        // Pega os dados finais dos perfis no Supabase e as candidaturas no VPS
+        const idsAmostra = todosIds.slice(0, 30);
+        const { data: perfisFinais } = await supabase
+          .from('perfis_candidatos')
+          .select('*')
+          .in('id', idsAmostra);
+
+        if (!perfisFinais || perfisFinais.length === 0) {
+          if (!cancelled) {
+            setResults([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const validPerfilIds = perfisFinais.map((p: any) => p.id);
+        const candidaturas = await fetchCandidaturasFromVPS(validPerfilIds);
 
         if (cancelled) return;
 
         const perfisIncluidos = new Set<string>();
-        const mapped = perfisData.flatMap((perfil: any) => {
+        const mapped = perfisFinais.flatMap((perfil: any) => {
           if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id) || perfil.id === excludeId) {
             return [];
           }
-          
+
           const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
           if (candsDoPerfil.length === 0) return [];
 

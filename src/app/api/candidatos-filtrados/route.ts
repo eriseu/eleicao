@@ -13,6 +13,13 @@ export async function GET(request: Request) {
 
     const vpsUrl = new URL(`${vpsApiUrl}/api/candidatos-filtrados`);
     vpsUrl.searchParams.append('uf', uf);
+    
+    // Repassa os cargos exigidos pela API do FastAPI no VPS
+    const cargosPadrao = ['PRESIDENTE', 'GOVERNADOR', 'SENADOR', 'DEPUTADO FEDERAL', 'DEPUTADO ESTADUAL', 'PREFEITO', 'VEREADOR'];
+    cargosPadrao.forEach(cargo => {
+      vpsUrl.searchParams.append('cargos', cargo);
+    });
+
     if (municipio) {
       vpsUrl.searchParams.append('municipio', municipio);
     }

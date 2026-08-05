@@ -74,7 +74,12 @@ export default function Home() {
         const candidaturasFiltradas = candidaturasDoPerfil.filter((c: any) => {
           const anoValid = (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao));
           const cargoValid = cargosPermitidos.includes(c.cargo);
-          const ufValid = selectedUf === 'BR' || c.uf === selectedUf;
+          
+          // CORREÇÃO AQUI: Se for BR, aceita se c.uf for 'BR', vazia ou nula
+          const ufValid = selectedUf === 'BR' 
+            ? (!c.uf || c.uf === 'BR' || c.uf === 'Nacional') 
+            : c.uf === selectedUf;
+
           const munValid = !selectedMunicipio || c.municipio === selectedMunicipio;
           return anoValid && cargoValid && ufValid && munValid;
         });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface AdProps {
   slot: string;
@@ -8,15 +8,21 @@ interface AdProps {
 }
 
 export default function AdBanner({ slot, format = 'auto' }: AdProps) {
+  const [isMounted, setIsMounted] = useState(false);
+
   useEffect(() => {
+    setIsMounted(true);
     try {
       // @ts-ignore
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch (err) {
-      // Silencia erros se o adblock estiver ativo ou o script ainda não carregou
       console.warn('AdSense não pôde ser inicializado:', err);
     }
   }, []);
+
+  if (!isMounted) {
+    return <div style={{ minHeight: '100px' }} />;
+  }
 
   return (
     <div 

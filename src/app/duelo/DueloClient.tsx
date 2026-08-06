@@ -83,65 +83,70 @@ export default function DueloClient() {
   }, [selectedUf]);
 
   const getCargosPorEscopo = useCallback(() => {
-    if (selectedUf === 'BR') {
-      return CARGOS_POR_ESCOPO.nacional;
-    }
-    if (selectedMunicipio) {
-      return CARGOS_POR_ESCOPO.municipal;
-    }
-    return [...CARGOS_POR_ESCOPO.estadual, ...CARGOS_POR_ESCOPO.municipal];
-  }, [selectedUf, selectedMunicipio]);
+      if (selectedUf === 'BR') {
+        return CARGOS_POR_ESCOPO.nacional;
+      }
+      // Se houver município selecionado: apenas cargos MUNICIPAIS
+      if (selectedMunicipio) {
+        return CARGOS_POR_ESCOPO.municipal;
+      }
+      // Apenas ESTADO selecionado: apenas cargos ESTADUAIS (Deputados, Governador, Senador)
+      return CARGOS_POR_ESCOPO.estadual;
+    }, [selectedUf, selectedMunicipio]);
 
   // Função robusta de mapeamento e tratamento de fotos idêntica ao app/page
   const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
-    const perfisIncluidos = new Set<string>();
-    return perfis.flatMap((perfil) => {
-      if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
-        return [];
-      }
-      perfisIncluidos.add(perfil.id);
+      const perfisIncluidos = new Set<string>();
+      return perfis.flatMap((perfil) => {
+        if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) return [];
+        perfisIncluidos.add(perfil.id);
 
-      const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
-      if (candsDoPerfil.length === 0) return [];
+        const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+        if (candsDoPerfil.length === 0) return [];
 
-      const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
-      const candidaturaPrincipal = sortedCands[0];
+        // Ordena da eleição mais recente para a mais antiga
+        const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+        const candidaturaPrincipal = sortedCands[0];
 
-      const candidaturaComFoto = sortedCands.find((c: any) => {
-        const foto = c.foto || c.sq_candidato;
-        if (!foto) return false;
-        const fotoStr = String(foto);
-        return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
-      });
+        // Busca a foto mais recente que SEJA válida
+        const candidaturaComFoto = sortedCands.find((c: any) => {
+          const foto = c.foto || c.sq_candidato;
+          if (!foto) return false;
+          const fotoStr = String(foto);
+          return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
+        });
 
-      const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
+        // Garante que o objeto retornado utilize o caminho padronizado da foto mais recente
+        const fotoFinal = candidaturaComFoto 
+          ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
+          : candidaturaPrincipal.foto;
 
-      return [{
-        id: perfil.id,
-        nome_completo: perfil.nome_completo,
-        cpf: perfil.cpf,
-        titulo_eleitoral: perfil.titulo_eleitoral,
-        created_at: perfil.created_at,
-        elo_score: perfil.elo_score ?? 1200,
-        matches_count: perfil.matches_count ?? 0,
-        nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
-        partido: candidaturaPrincipal.partido || 'S/P',
-        cargo: candidaturaPrincipal.cargo,
-        ano_eleicao: candidaturaPrincipal.ano_eleicao,
-        uf: candidaturaPrincipal.uf,
-        municipio: candidaturaPrincipal.municipio,
-        foto: fotoFinal,
-        candidaturas: sortedCands,
-        ultima_candidatura: {
-          ...candidaturaPrincipal,
-          foto: fotoFinal,
-          perfil_id: perfil.id,
+        return [{
+          id: perfil.id,
+          nome_completo: perfil.nome_completo,
+          cpf: perfil.cpf,
+          titulo_eleitoral: perfil.titulo_eleitoral,
           created_at: perfil.created_at,
-          sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
-        },
-      }];
-    });
-  };
+          elo_score: perfil.elo_score ?? 1200,
+          matches_count: perfil.matches_count ?? 0,
+          nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
+          partido: candidaturaPrincipal.partido || 'S/P',
+          cargo: candidaturaPrincipal.cargo,
+          ano_eleicao: candidaturaPrincipal.ano_eleicao,
+          uf: candidaturaPrincipal.uf,
+          municipio: candidaturaPrincipal.municipio,
+          foto: fotoFinal,
+          candidaturas: sortedCands,
+          ultima_candidatura: {
+            ...candidaturaPrincipal,
+            foto: fotoFinal,
+            perfil_id: perfil.id,
+            created_at: perfil.created_at,
+            sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
+          },
+        }];
+      });
+    };
 
   // Lógica de carregamento integrada com VPS e Supabase
   const loadData = useCallback(async () => {
@@ -291,20 +296,24 @@ export default function DueloClient() {
   }, [filteredCandidates, c1, c2]);
 
   const getRankingUrl = (candidate: Candidato) => {
-    const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
-    const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
-    
-    const params = new URLSearchParams({ 
-      uf, 
-      highlight: candidate.id 
-    });
+      const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
+      const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
+      
+      // Determina o escopo com base no estado/município selecionados no momento do duelo
+      const escopo = selectedMunicipio ? 'municipal' : (selectedUf === 'BR' ? 'nacional' : 'estadual');
 
-    if (uf !== 'BR' && municipio && municipio.toUpperCase() !== uf.toUpperCase()) {
-      params.set('municipio', municipio);
-    }
+      const params = new URLSearchParams({ 
+        uf, 
+        escopo,
+        highlight: candidate.id 
+      });
 
-    return `/ranking?${params.toString()}`;
-  };
+      if (selectedMunicipio && municipio) {
+        params.set('municipio', municipio);
+      }
+
+      return `/ranking?${params.toString()}`;
+    };
 
   const escolher = async (escolhido: Candidato, outro: Candidato) => {
     if (submitting) return;
@@ -398,33 +407,34 @@ export default function DueloClient() {
                 </select>
               </label>
 
-              <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Escopo atual</p>
-                  <p className="mt-2 text-sm text-white">
-                    {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-300">Candidatos sincronizados via VPS</p>
+                {/* Substituir o bloco do Escopo Atual por uma versão inline e compacta */}
+                <div className="flex flex-col justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Escopo</span>
+                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+                      {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      disabled={isSharedDuel || !canClearFilters}
+                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={randomizeMatch}
+                      disabled={isSharedDuel || loadingCandidates || availableCandidatesCount < 2}
+                      className="flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-40"
+                    >
+                      Aleatório
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={resetFilters}
-                    disabled={isSharedDuel || !canClearFilters}
-                    className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Limpar filtros
-                  </button>
-                  <button
-                    type="button"
-                    onClick={randomizeMatch}
-                    disabled={isSharedDuel || loadingCandidates || availableCandidatesCount < 2}
-                    className="inline-flex items-center justify-center rounded-2xl border border-emerald-500 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Aleatório
-                  </button>
-                </div>
-              </div>
             </div>
           </section>}
 

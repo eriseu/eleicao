@@ -21,6 +21,17 @@ const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
 };
 
+const CARGOS_ESTADUAIS_NACIONAIS = [
+  'PRESIDENTE',
+  'VICE-PRESIDENTE',
+  'GOVERNADOR',
+  'VICE-GOVERNADOR',
+  'SENADOR',
+  'DEPUTADO FEDERAL',
+  'DEPUTADO ESTADUAL',
+  'DEPUTADO DISTRITAL',
+];
+
 export default function DueloClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -104,11 +115,22 @@ export default function DueloClient() {
         const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
         if (candsDoPerfil.length === 0) return [];
 
-        // Ordena da eleição mais recente para a mais antiga
+        // Ordena do ano mais recente ao mais antigo
         const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
-        const candidaturaPrincipal = sortedCands[0];
+        const candidaturaMaisRecente = sortedCands[0];
 
-        // Busca a foto mais recente que SEJA válida
+        // REGRA DE CORREÇÃO (Eduardo Botelho e similares):
+        // 1. Procura se ele já disputou algum cargo Estadual/Nacional no histórico
+        const candidaturaEstadualOuNacional = sortedCands.find((c: any) =>
+          CARGOS_ESTADUAIS_NACIONAIS.includes((c.cargo || '').toUpperCase().trim())
+        );
+
+        // 2. Define a candidatura de referência de escopo:
+        // Se ele já foi Deputado/Gov/Senador, a referência de escopo SERÁ essa candidatura estadual,
+        // libertando-o do município onde ele disputou para Prefeito depois!
+        const candidaturaReferencia = candidaturaEstadualOuNacional || candidaturaMaisRecente;
+
+        // Resolução de Foto Mais Recente
         const candidaturaComFoto = sortedCands.find((c: any) => {
           const foto = c.foto || c.sq_candidato;
           if (!foto) return false;
@@ -116,10 +138,9 @@ export default function DueloClient() {
           return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
         });
 
-        // Garante que o objeto retornado utilize o caminho padronizado da foto mais recente
         const fotoFinal = candidaturaComFoto 
           ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
-          : candidaturaPrincipal.foto;
+          : candidaturaMaisRecente.foto;
 
         return [{
           id: perfil.id,
@@ -129,20 +150,27 @@ export default function DueloClient() {
           created_at: perfil.created_at,
           elo_score: perfil.elo_score ?? 1200,
           matches_count: perfil.matches_count ?? 0,
-          nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
-          partido: candidaturaPrincipal.partido || 'S/P',
-          cargo: candidaturaPrincipal.cargo,
-          ano_eleicao: candidaturaPrincipal.ano_eleicao,
-          uf: candidaturaPrincipal.uf,
-          municipio: candidaturaPrincipal.municipio,
+          nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
+          partido: candidaturaMaisRecente.partido || 'S/P',
+          
+          // EXIBIÇÃO: Mostra o cargo estadual se ele tiver, ou o mais recente caso contrário
+          cargo: candidaturaReferencia.cargo,
+          uf: candidaturaReferencia.uf,
+          
+          // SE O CARGO É ESTADUAL/NACIONAL, O MUNICÍPIO FICA VAZIO/NULO NO PERFIL GERAL!
+          // Isso impede que ele fique preso a um município específico na busca.
+          municipio: CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
+            ? '' 
+            : candidaturaReferencia.municipio,
+
           foto: fotoFinal,
           candidaturas: sortedCands,
           ultima_candidatura: {
-            ...candidaturaPrincipal,
+            ...candidaturaMaisRecente,
             foto: fotoFinal,
             perfil_id: perfil.id,
             created_at: perfil.created_at,
-            sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
+            sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
           },
         }];
       });
@@ -407,6 +435,34 @@ export default function DueloClient() {
                 </select>
               </label>
 
+                {/* Substituir o bloco do Escopo Atual por uma versão inline e compacta */}
+                <div className="flex flex-col justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Escopo</span>
+                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+                      {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      disabled={isSharedDuel || !canClearFilters}
+                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={randomizeMatch}
+                      disabled={isSharedDuel || loadingCandidates || availableCandidatesCount < 2}
+                      className="flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-40"
+                    >
+                      Aleatório
+                    </button>
+                  </div>
+                </div>
             </div>
           </section>}
 

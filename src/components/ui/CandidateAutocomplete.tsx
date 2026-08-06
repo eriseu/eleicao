@@ -96,19 +96,27 @@ export default function CandidateAutocomplete({
         return;
       }
 
-      // Filtra direto na lista em memória vinda do R2
+      const normalizar = (str: string) => {
+        if (!str) return '';
+        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      };
+
+      const termoBusca = normalizar(sanitizedTerm);
+                                         
+      // Filtra direto na lista em memória vinda do R2 usando a busca tolerante a acentos
       const filtrados = candidatosUfRef.current.filter((c: any) => {
         if (c.id === excludeId) return false;
 
         // Filtro opcional por município se informado
-        if (municipio && c.municipio && c.municipio.toLowerCase() !== municipio.toLowerCase()) {
+        if (municipio && c.municipio && normalizar(c.municipio) !== normalizar(municipio)) {
           return false;
         }
 
-        const nomeCompleto = (c.nome_completo || '').toLowerCase();
-        const nomeUrna = (c.nome_urna || '').toLowerCase();
+        // Compara ignorando acentos e maiúsculas/minúsculas tanto no nome completo quanto na urna
+        const matchCompleto = normalizar(c.nome_completo).includes(termoBusca);
+        const matchUrna = normalizar(c.nome_urna).includes(termoBusca);
 
-        return nomeCompleto.includes(sanitizedTerm) || nomeUrna.includes(sanitizedTerm);
+        return matchCompleto || matchUrna;
       });
 
       // Mapeia para o formato esperado pelo componente
@@ -153,7 +161,7 @@ export default function CandidateAutocomplete({
       candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR')
     );
   }
-
+            
   return (
     <label className="relative block">
       <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">{label}</span>

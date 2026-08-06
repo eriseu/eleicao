@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Candidato } from '@/types';
 
 interface CandidateAutocompleteProps {
@@ -14,6 +14,19 @@ interface CandidateAutocompleteProps {
 }
 
 const R2_URL = process.env.NEXT_PUBLIC_R2_URL || '';
+
+// Mapeamento de cargos permitidos por escopo
+const CARGOS_POR_ESCOPO = {
+  nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
+  estadual: [
+    'DEPUTADO ESTADUAL',
+    'DEPUTADO FEDERAL',
+    'GOVERNADOR',
+    'VICE-GOVERNADOR',
+    'SENADOR',
+  ],
+  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+};
 
 // Cache local em memória para não baixar o JSON do R2 repetidas vezes na mesma sessão
 const cacheCandidatosUf: Record<string, any[]> = {};
@@ -36,7 +49,7 @@ export default function CandidateAutocomplete({
   const [results, setResults] = useState<Candidato[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  
+
   // Referência para guardar a lista bruta do estado atual
   const candidatosUfRef = useRef<any[]>([]);
 
@@ -77,6 +90,19 @@ export default function CandidateAutocomplete({
     };
   }, [uf]);
 
+  // Retorna os cargos permitidos de acordo com o estado/município selecionados
+  const getCargosPermitidos = useCallback(() => {
+    if (uf === 'BR') {
+      return CARGOS_POR_ESCOPO.nacional;
+    }
+    // Se selecionou município => SOMENTE municipal
+    if (municipio && municipio.trim() !== '') {
+      return CARGOS_POR_ESCOPO.municipal;
+    }
+    // Se selecionou UF sem município => SOMENTE estadual
+    return CARGOS_POR_ESCOPO.estadual;
+  }, [uf, municipio]);
+
   // Processo de busca local instantânea
   useEffect(() => {
     const term = query.trim();
@@ -89,7 +115,7 @@ export default function CandidateAutocomplete({
     const timeout = window.setTimeout(() => {
       setLoading(true);
       const sanitizedTerm = term.replace(/[()[\]{}]/g, '').toLowerCase();
-      
+
       if (!sanitizedTerm || candidatosUfRef.current.length === 0) {
         setResults([]);
         setLoading(false);
@@ -102,17 +128,25 @@ export default function CandidateAutocomplete({
       };
 
       const termoBusca = normalizar(sanitizedTerm);
-                                         
+      const cargosPermitidos = getCargosPermitidos();
+
       // Filtra direto na lista em memória vinda do R2 usando a busca tolerante a acentos
       const filtrados = candidatosUfRef.current.filter((c: any) => {
         if (c.id === excludeId) return false;
 
-        // Filtro opcional por município se informado
+        // 1. FILTRO DE CARGO POR ESCOPO (Correção principal)
+        const cargoCandidato = (c.cargo || '').toUpperCase().trim();
+        const cargoValido = cargosPermitidos.some(
+          (cargo) => cargo.toUpperCase().trim() === cargoCandidato
+        );
+        if (!cargoValido) return false;
+
+        // 2. Filtro opcional por município se informado
         if (municipio && c.municipio && normalizar(c.municipio) !== normalizar(municipio)) {
           return false;
         }
 
-        // Compara ignorando acentos e maiúsculas/minúsculas tanto no nome completo quanto na urna
+        // 3. Compara ignorando acentos e maiúsculas/minúsculas tanto no nome completo quanto na urna
         const matchCompleto = normalizar(c.nome_completo).includes(termoBusca);
         const matchUrna = normalizar(c.nome_urna).includes(termoBusca);
 
@@ -128,13 +162,12 @@ export default function CandidateAutocomplete({
     }, 200);
 
     return () => window.clearTimeout(timeout);
-  }, [query, municipio, excludeId, selected, disabled]);
+  }, [query, municipio, excludeId, selected, disabled, getCargosPermitidos]);
 
   function filtratesMap(lista: any[]): Candidato[] {
     const mapUnicos = new Map();
 
     lista.forEach((c: any) => {
-      // Como o R2 já traz a candidatura/perfil consolidada por ID, evitamos duplicatas
       if (!mapUnicos.has(c.id)) {
         mapUnicos.set(c.id, {
           id: c.id,
@@ -157,11 +190,11 @@ export default function CandidateAutocomplete({
       }
     });
 
-    return Array.from(mapUnicos.values()).sort((a, b) => 
+    return Array.from(mapUnicos.values()).sort((a, b) =>
       candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR')
     );
   }
-            
+
   return (
     <label className="relative block">
       <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">{label}</span>
@@ -196,8 +229,12 @@ export default function CandidateAutocomplete({
                   setOpen(false);
                 }}
               >
-                <span className="block text-sm font-semibold text-white">{candidate.nome_urna || candidate.nome_completo}</span>
-                <span className="block text-xs text-slate-400">{candidate.cargo} · {candidate.partido}</span>
+                <span className="block text-sm font-semibold text-white">
+                  {candidate.nome_urna || candidate.nome_completo}
+                </span>
+                <span className="block text-xs text-slate-400">
+                  {candidate.cargo} · {candidate.partido}
+                </span>
               </button>
             ))
           ) : (

@@ -234,34 +234,34 @@ export default function DueloClient() {
   const filteredCandidates = useMemo(() => {
     if (isSharedDuel) return candidates;
 
+    // Obtém os cargos permitidos para o escopo selecionado (Nacional, Estadual ou Municipal)
+    const cargosPermitidos = getCargosPorEscopo();
+
     return candidates
       .filter((candidate) => {
+        // 1. Validação de UF
         if (candidate.uf !== selectedUf) return false;
+
+        // 2. Validação de Município (se selecionado, exige que coincida)
         if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
-        return true;
+
+        // 3. REGRA DE OURO: Validação Estrita de Cargo por Escopo
+        // Pega o cargo da última candidatura (ou do objeto base)
+        const cargoCandidato = (
+          candidate.ultima_candidatura?.cargo || 
+          candidate.cargo || 
+          ''
+        ).toUpperCase().trim();
+
+        // Se o cargo não estiver na lista permitida para o escopo, bloqueia!
+        const cargoValido = cargosPermitidos.some(
+          (c) => c.toUpperCase().trim() === cargoCandidato
+        );
+
+        return cargoValido;
       })
       .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
-  }, [candidates, isSharedDuel, selectedUf, selectedMunicipio]);
-
-  useEffect(() => {
-    if (sharedC1Id) {
-      const encontrado1 = filteredCandidates.find((c) => c.id === sharedC1Id);
-      if (encontrado1) setC1(encontrado1);
-    }
-    if (sharedC2Id) {
-      const encontrado2 = filteredCandidates.find((c) => c.id === sharedC2Id);
-      if (encontrado2) setC2(encontrado2);
-    }
-
-    if (!isSharedDuel && filteredCandidates.length >= 2) {
-      const shuffled = [...filteredCandidates].sort(() => Math.random() - 0.5);
-      setC1(shuffled[0]);
-      setC2(shuffled[1]);
-    } else if (!isSharedDuel) {
-      setC1(null);
-      setC2(null);
-    }
-  }, [filteredCandidates, isSharedDuel, sharedC1Id, sharedC2Id]);
+  }, [candidates, isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
   const availableCandidatesCount = filteredCandidates.length;
   const canClearFilters = selectedUf !== 'BR' || selectedMunicipio !== '';
@@ -407,34 +407,6 @@ export default function DueloClient() {
                 </select>
               </label>
 
-                {/* Substituir o bloco do Escopo Atual por uma versão inline e compacta */}
-                <div className="flex flex-col justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Escopo</span>
-                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-emerald-400">
-                      {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
-                    </span>
-                  </div>
-                  
-                  <div className="flex gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      disabled={isSharedDuel || !canClearFilters}
-                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
-                    >
-                      Limpar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={randomizeMatch}
-                      disabled={isSharedDuel || loadingCandidates || availableCandidatesCount < 2}
-                      className="flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-40"
-                    >
-                      Aleatório
-                    </button>
-                  </div>
-                </div>
             </div>
           </section>}
 

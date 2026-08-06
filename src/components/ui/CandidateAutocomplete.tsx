@@ -1,8 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
+import { useEffect, useState, useRef } from 'react';
 import type { Candidato } from '@/types';
 
 interface CandidateAutocompleteProps {
@@ -14,6 +12,11 @@ interface CandidateAutocompleteProps {
   excludeId?: string;
   disabled?: boolean;
 }
+
+const R2_URL = process.env.NEXT_PUBLIC_R2_URL || '';
+
+// Cache local em memória para não baixar o JSON do R2 repetidas vezes na mesma sessão
+const cacheCandidatosUf: Record<string, any[]> = {};
 
 function candidateLabel(candidate: Candidato) {
   const name = candidate.nome_urna || candidate.nome_completo;
@@ -33,12 +36,48 @@ export default function CandidateAutocomplete({
   const [results, setResults] = useState<Candidato[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  
+  // Referência para guardar a lista bruta do estado atual
+  const candidatosUfRef = useRef<any[]>([]);
 
   useEffect(() => {
     setQuery(selected ? candidateLabel(selected) : '');
     setResults([]);
   }, [selected]);
 
+  // Carrega o JSON do R2 assim que a UF mudar
+  useEffect(() => {
+    let cancelled = false;
+    if (!uf) return;
+
+    async function carregarCacheR2() {
+      const ufKey = uf.toUpperCase();
+      if (cacheCandidatosUf[ufKey]) {
+        candidatosUfRef.current = cacheCandidatosUf[ufKey];
+        return;
+      }
+
+      try {
+        const res = await fetch(`${R2_URL}/candidatos/${ufKey}.json`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            cacheCandidatosUf[ufKey] = data;
+            candidatosUfRef.current = data;
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao carregar candidatos do R2:', err);
+      }
+    }
+
+    carregarCacheR2();
+    return () => {
+      cancelled = true;
+    };
+  }, [uf]);
+
+  // Processo de busca local instantânea
   useEffect(() => {
     const term = query.trim();
     if (disabled || term.length < 2 || (selected && term === candidateLabel(selected))) {
@@ -47,166 +86,74 @@ export default function CandidateAutocomplete({
       return;
     }
 
-    let cancelled = false;
-    const timeout = window.setTimeout(async () => {
+    const timeout = window.setTimeout(() => {
       setLoading(true);
-
-      try {
-        const sanitizedTerm = term.replace(/[()[\]{}]/g, '').trim();
-        if (!sanitizedTerm) {
-          if (!cancelled) {
-            setResults([]);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // Define os cargos com base no contexto (igual ao DueloClient) para atender aos filtros obrigatórios da VPS
-        const cargosPadrao = uf === 'BR' 
-          ? ['PRESIDENTE', 'VICE-PRESIDENTE'] 
-          : municipio 
-            ? ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR']
-            : ['DEPUTADO ESTADUAL', 'DEPUTADO FEDERAL', 'GOVERNADOR', 'VICE-GOVERNADOR', 'SENADOR', 'PREFEITO', 'VICE-PREFEITO', 'VEREADOR'];
-
-        let perfilIdsVps: string[] = [];
-        try {
-          const queryParams = new URLSearchParams();
-          queryParams.append('uf', uf);
-          cargosPadrao.forEach(cargo => queryParams.append('cargos', cargo));
-          if (municipio) {
-            queryParams.append('municipio', municipio);
-          }
-
-          const response = await fetch(`/api/candidatos-filtrados?${queryParams.toString()}`);
-          if (response.ok) {
-            perfilIdsVps = await response.json();
-          }
-        } catch (e) {
-          console.warn('Erro ao consultar IDs via API interna:', e);
-        }
-
-        if (!perfilIdsVps || perfilIdsVps.length === 0) {
-          if (!cancelled) {
-            setResults([]);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // Busca em lotes no Supabase para garantir que qualquer candidato da lista possa ser encontrado
-        const batchSize = 500;
-        let perfisFinais: any[] = [];
-
-        for (let i = 0; i < perfilIdsVps.length; i += batchSize) {
-          if (cancelled) break;
-          const batchIds = perfilIdsVps.slice(i, i + batchSize);
-          const { data: perfisBatch, error: perfilError } = await supabase
-            .from('perfis_candidatos')
-            .select('*')
-            .in('id', batchIds);
-
-          if (!perfilError && perfisBatch) {
-            perfisFinais = [...perfisFinais, ...perfisBatch];
-          }
-        }
-
-        if (perfisFinais.length === 0 || cancelled) {
-          if (!cancelled) {
-            setResults([]);
-            setLoading(false);
-          }
-          return;
-        }
-
-        const validPerfilIds = perfisFinais.map((p: any) => p.id);
-        const candidaturas = (await fetchCandidaturasFromVPS(validPerfilIds)) || [];
-
-        if (cancelled) return;
-
-        const termLower = sanitizedTerm.toLowerCase();
-        const perfisIncluidos = new Set<string>();
-
-        const mapped = perfisFinais.flatMap((perfil: any) => {
-          if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id) || perfil.id === excludeId) {
-            return [];
-          }
-
-          const candsDoPerfil = (candidaturas as any[]).filter((c: any) => c.perfil_id === perfil.id);
-          if (candsDoPerfil.length === 0) return [];
-
-          const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
-          const candidaturaPrincipal = sortedCands[0];
-
-          const nomeCompleto = (perfil.nome_completo || '').toLowerCase();
-          const nomeUrna = (candidaturaPrincipal.nome_urna || '').toLowerCase();
-
-          // Filtra localmente por nome completo ou nome de urna
-          const matchTexto = nomeCompleto.includes(termLower) || nomeUrna.includes(termLower);
-          if (!matchTexto) return [];
-
-          if (uf !== 'BR' && candidaturaPrincipal.uf !== uf) {
-            return [];
-          }
-          if (municipio && candidaturaPrincipal.municipio !== municipio) {
-            return [];
-          }
-
-          perfisIncluidos.add(perfil.id);
-
-          const candidaturaComFoto = sortedCands.find((c: any) => {
-            const foto = c.foto || c.sq_candidato;
-            if (!foto) return false;
-            const fotoStr = String(foto);
-            return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
-          });
-
-          const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
-
-          return [{
-            id: perfil.id,
-            nome_completo: perfil.nome_completo,
-            cpf: perfil.cpf,
-            titulo_eleitoral: perfil.titulo_eleitoral,
-            created_at: perfil.created_at,
-            elo_score: perfil.elo_score ?? 1200,
-            matches_count: perfil.matches_count ?? 0,
-            nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
-            partido: candidaturaPrincipal.partido || 'S/P',
-            cargo: candidaturaPrincipal.cargo,
-            ano_eleicao: candidaturaPrincipal.ano_eleicao,
-            uf: candidaturaPrincipal.uf,
-            municipio: candidaturaPrincipal.municipio,
-            foto: fotoFinal,
-            candidaturas: sortedCands,
-            ultima_candidatura: {
-              ...candidaturaPrincipal,
-              foto: fotoFinal,
-              perfil_id: perfil.id,
-              created_at: perfil.created_at,
-              sq_candidato: Number(candidaturaPrincipal.sq_candidato) || 0,
-            },
-          }];
-        }).sort((a, b) => candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR'));
-
-        if (!cancelled) {
-          setResults(mapped.slice(0, 20));
-          setLoading(false);
-          setOpen(true);
-        }
-      } catch (err) {
-        console.error('Erro no Autocomplete:', err);
-        if (!cancelled) {
-          setResults([]);
-          setLoading(false);
-        }
+      const sanitizedTerm = term.replace(/[()[\]{}]/g, '').toLowerCase();
+      
+      if (!sanitizedTerm || candidatosUfRef.current.length === 0) {
+        setResults([]);
+        setLoading(false);
+        return;
       }
-    }, 300);
 
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [disabled, excludeId, municipio, query, selected, uf]);
+      // Filtra direto na lista em memória vinda do R2
+      const filtrados = candidatosUfRef.current.filter((c: any) => {
+        if (c.id === excludeId) return false;
+
+        // Filtro opcional por município se informado
+        if (municipio && c.municipio && c.municipio.toLowerCase() !== municipio.toLowerCase()) {
+          return false;
+        }
+
+        const nomeCompleto = (c.nome_completo || '').toLowerCase();
+        const nomeUrna = (c.nome_urna || '').toLowerCase();
+
+        return nomeCompleto.includes(sanitizedTerm) || nomeUrna.includes(sanitizedTerm);
+      });
+
+      // Mapeia para o formato esperado pelo componente
+      const mapped: Candidato[] = filtratesMap(filtrados);
+
+      setResults(mapped.slice(0, 20));
+      setLoading(false);
+      setOpen(true);
+    }, 200);
+
+    return () => window.clearTimeout(timeout);
+  }, [query, municipio, excludeId, selected, disabled]);
+
+  function filtratesMap(lista: any[]): Candidato[] {
+    const mapUnicos = new Map();
+
+    lista.forEach((c: any) => {
+      // Como o R2 já traz a candidatura/perfil consolidada por ID, evitamos duplicatas
+      if (!mapUnicos.has(c.id)) {
+        mapUnicos.set(c.id, {
+          id: c.id,
+          nome_completo: c.nome_completo,
+          nome_urna: c.nome_urna || c.nome_completo,
+          partido: c.partido || 'S/P',
+          cargo: c.cargo,
+          ano_eleicao: c.ano_eleicao,
+          uf: c.uf,
+          municipio: c.municipio,
+          foto: c.foto || c.sq_candidato,
+          elo_score: 1200,
+          matches_count: 0,
+          ultima_candidatura: {
+            ...c,
+            perfil_id: c.id,
+            sq_candidato: Number(c.sq_candidato) || 0,
+          },
+        });
+      }
+    });
+
+    return Array.from(mapUnicos.values()).sort((a, b) => 
+      candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR')
+    );
+  }
+
   return (
     <label className="relative block">
       <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">{label}</span>

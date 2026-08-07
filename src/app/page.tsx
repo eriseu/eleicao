@@ -61,24 +61,26 @@ export default function Home() {
     void loadMunicipios();
   }, [selectedUf]);
 
+  // Regra Estrita de Escopo:
+  // - Brasil: Presidente / Vice
+  // - Estado sem município: APENAS Governador, Senador, Deputados (Sem Prefeito/Vereador)
+  // - Município Selecionado: APENAS Prefeito, Vice-Prefeito, Vereador
   const getCargosPorEscopo = useCallback(() => {
     if (selectedUf === 'BR') {
       return CARGOS_POR_ESCOPO.nacional;
     }
-    if (selectedMunicipio) {
+    if (selectedMunicipio && selectedMunicipio.trim() !== '') {
       return CARGOS_POR_ESCOPO.municipal;
     }
-    return [...CARGOS_POR_ESCOPO.estadual, ...CARGOS_POR_ESCOPO.municipal];
+    return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-  // Função para sortear um par aleatório do array
   const pickRandomPair = (source: Candidato[]) => {
     if (source.length < 2) return null;
     const shuffled = [...source].sort(() => Math.random() - 0.5);
     return [shuffled[0], shuffled[1]] as [Candidato, Candidato];
   };
 
-  // Carrega os candidatos consumindo direto o JSON gerado no R2 (CDN)
   const fetchCandidates = useCallback(async () => {
     setLoading(true);
     try {
@@ -94,7 +96,7 @@ export default function Home() {
       const todosCandidatosR2: Candidato[] = await response.json();
       const cargosPermitidos = getCargosPorEscopo().map(c => c.toUpperCase().trim());
 
-      // Filtra de acordo com as regras de escopo e município
+      // Filtro estrito por escopo e por município
       const filtrados = todosCandidatosR2.filter((c: Candidato) => {
         const cargoCand = (c.cargo || '').toUpperCase().trim();
         const condCargo = cargosPermitidos.includes(cargoCand);
@@ -147,7 +149,6 @@ export default function Home() {
         return;
       }
 
-      // Sorteia o próximo par excluindo os anteriores para variar a disputa
       const alternatives = candidates.filter(
         (candidate) => candidate.id !== escolhido.id && candidate.id !== outro.id
       );

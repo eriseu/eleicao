@@ -1,6 +1,5 @@
 import { getSiteUrl } from '@/lib/seo';
-import { getSitemapCandidateCount, SITEMAP_PAGE_SIZE, xmlEscape } from '@/lib/sitemap';
-
+import { getSitemapCandidateCount, xmlEscape } from '@/lib/sitemap';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {

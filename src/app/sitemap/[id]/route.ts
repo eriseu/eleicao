@@ -1,5 +1,5 @@
 import { getSiteUrl } from '@/lib/seo';
-import { getSitemapCandidates, xmlEscape } from '@/lib/sitemap';
+import { getSitemapCandidatePage, xmlEscape } from '@/lib/sitemap';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,13 +51,16 @@ export async function GET(_request: Request, { params }: SitemapRouteProps) {
     }
 
     try {
-      const candidates = await getSitemapCandidates(page);
-      if (candidates.length === 0) {
+      const candidates = await getSitemapCandidatePage(page);
+      if (!candidates || candidates.length === 0) {
         return new Response('Sitemap não encontrado.', { status: 404 });
       }
+
       entries = candidates.flatMap((candidate) => {
         const rankingUrl = new URL('/ranking', siteUrl);
-        rankingUrl.searchParams.set('uf', candidate.uf);
+        if (candidate.uf) {
+          rankingUrl.searchParams.set('uf', candidate.uf);
+        }
         rankingUrl.searchParams.set('highlight', candidate.id);
 
         return [
@@ -74,7 +77,7 @@ export async function GET(_request: Request, { params }: SitemapRouteProps) {
         ];
       });
     } catch (error) {
-      console.error(error);
+      console.error('Erro ao gerar sitemap dinâmico:', error);
       return new Response('Não foi possível gerar o sitemap.', { status: 503 });
     }
   }

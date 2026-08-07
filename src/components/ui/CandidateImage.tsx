@@ -17,47 +17,47 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
 
     // Coleta o objeto principal, última candidatura e o histórico
     const historicoGeral = [
-      candidato,
       candidato.ultima_candidatura,
+      candidato,
       ...(candidato.candidaturas || []),
       ...(candidato.historico || [])
     ].filter(Boolean);
 
     historicoGeral.forEach((cand: any) => {
-      const ano = cand.ano_eleicao || candidato.ano_eleicao || 2026;
+      // ⚠️ IMPORTANTE: Usa estritamente o ano da candidatura real. Não usa fallback de ano futuro!
+      const ano = cand.ano_eleicao || candidato.ano_eleicao;
       const uf = cand.uf || candidato.uf || 'BR';
       const fotoRef = cand.foto || cand.sq_candidato;
 
-      if (!fotoRef) return;
+      if (!fotoRef || !ano) return;
 
       let fotoStr = String(fotoRef).trim();
 
-      // 1. Se for URL absoluta, usa diretamente
+      // Se já for URL absoluta (http/https)
       if (fotoStr.startsWith('http')) {
         fallbackQueue.push(fotoStr);
         return;
       }
 
-      // Descreve e ignora avatares padrão
+      // Despreza valores de avatar padrão
       if (fotoStr && fotoStr !== 'avatar.png' && fotoStr !== 'avatar') {
         
-        // 2. Extrai o nome do arquivo se o campo contiver o caminho do ZIP (ex: "zip_file.zip/FDF123_div.jpg")
+        // Remove caminhos do ZIP se existirem (ex: "zip_file.zip/FDF123_div.jpg")
         if (fotoStr.includes('/')) {
           fotoStr = fotoStr.split('/').pop() || fotoStr;
         }
 
-        // 3. Obtém o nome base limpo removendo a extensão (.jpg, .jpeg, .png)
         const nomeBase = fotoStr.replace(/\.(jpg|jpeg|png)$/i, '');
         const extensoesPossiveis = ['jpg', 'jpeg', 'png'];
 
-        // A. Primeiro tenta o NOME EXACTO gravado no campo foto
-        if (ano >= 2022) {
+        // A. Primeiro tenta a CDN com o NOME EXATO no ANO REAL da candidatura
+        if (Number(ano) >= 2022) {
           fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${fotoStr}`);
         }
         fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${fotoStr}`);
 
-        // B. Tenta o nome base com variações de extensão (.jpg, .jpeg, .png)
-        if (ano >= 2022) {
+        // B. Tenta o nome base com as extensões conhecidas no ANO REAL
+        if (Number(ano) >= 2022) {
           extensoesPossiveis.forEach(ext => {
             fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${nomeBase}.${ext}`);
           });
@@ -67,11 +67,11 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
           fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${nomeBase}.${ext}`);
         });
 
-        // C. Fallback caso o sq_candidato seja diferente do campo foto
+        // C. Fallback caso precise consultar via sq_candidato
         if (cand.sq_candidato && cand.sq_candidato !== fotoStr) {
           const sqBase = String(cand.sq_candidato).trim();
           extensoesPossiveis.forEach(ext => {
-            if (ano >= 2022) {
+            if (Number(ano) >= 2022) {
               fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${sqBase}.${ext}`);
             }
             fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${sqBase}.${ext}`);
@@ -80,7 +80,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       }
     });
 
-    // Remove URLs duplicadas e adiciona a imagem genérica ao final do fallback
+    // Remove URLs duplicadas e define a imagem genérica ao final da fila
     const uniqueQueue = Array.from(new Set(fallbackQueue));
     uniqueQueue.push('/avatar.png');
 
@@ -90,13 +90,13 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
 
   useEffect(() => {
     if (urls.length > 0 && urls[currentIndex]) {
-      console.log(`🖼️ Tentando carregar imagem do candidato [${candidato?.nome_completo || candidato?.nome_urna}]:`, urls[currentIndex]);
+      console.log(`🖼️ Carregando imagem [${candidato?.nome_completo || candidato?.nome_urna}]:`, urls[currentIndex]);
     }
   }, [urls, currentIndex, candidato]);
 
   const handleError = () => {
     if (currentIndex < urls.length - 1) {
-      console.warn(`❌ Falha ao carregar: ${urls[currentIndex]}. Tentando próximo fallback...`);
+      console.warn(`❌ Falha no link: ${urls[currentIndex]}. Testando próximo...`);
       setCurrentIndex((prev) => prev + 1);
     }
   };

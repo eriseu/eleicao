@@ -4,78 +4,52 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
-import { AVAILABLE_UFS } from '@/constants/elections';
 import type { Candidato } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 export default function Perfil({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
-  
+
   const [candidato, setCandidato] = useState<Candidato | null>(null);
   const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
 
-  // 1️⃣ CARREGAMENTO INSTANTÂNEO DO R2
+  // 1️⃣ CARREGAMENTO LEVE VIA SERVIDOR NEXT.JS
   useEffect(() => {
-    async function loadCandidatoR2() {
+    async function loadCandidato() {
       try {
         setLoading(true);
-        let candidatoEncontradoR2: Candidato | null = null;
+        const res = await fetch(`/api/candidato/${resolvedParams.id}`);
+        if (!res.ok) throw new Error('Candidato não encontrado');
 
-        // Busca nos arquivos JSON estáticos da CDN R2
-        for (const uf of AVAILABLE_UFS) {
-          try {
-            const res = await fetch(`https://fotos.centraleti.com.br/candidatos/${uf}.json`);
-            if (!res.ok) continue;
+        const data = await res.json();
 
-            const listaCandidatos: Candidato[] = await res.json();
-            const cand = listaCandidatos.find((item) => item.id === resolvedParams.id);
-
-            if (cand) {
-              candidatoEncontradoR2 = cand;
-              break;
-            }
-          } catch (e) {
-            console.error(`Erro ao consultar R2 para UF ${uf}:`, e);
-          }
-        }
-
-        if (candidatoEncontradoR2) {
-          // Extrai e ordena as candidaturas contidas no JSON
-          const historico = (candidatoEncontradoR2 as any).candidaturas || [];
-          const historicoOrdenado = [...historico].sort(
-            (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
-          );
-
-          setHistoricoCandidaturas(historicoOrdenado);
-          
-          // Exibe o perfil IMEDIATAMENTE preservando o array candidaturas
-          setCandidato({
-            ...candidatoEncontradoR2,
-            candidaturas: historicoOrdenado,
-            elo_score: candidatoEncontradoR2.elo_score ?? 1200,
-            matches_count: candidatoEncontradoR2.matches_count ?? 0,
-          } as Candidato);
-        }
+        setHistoricoCandidaturas(data.historico || []);
+        setCandidato({
+          ...data.candidato,
+          candidaturas: data.historico,
+          elo_score: data.candidato.elo_score ?? 1200,
+          matches_count: data.candidato.matches_count ?? 0,
+        });
       } catch (err) {
-        console.error("Erro ao carregar dados do R2:", err);
+        console.error('Erro ao buscar candidato:', err);
       } finally {
-        setLoading(false); // Libera a renderização da página na hora
+        setLoading(false);
       }
     }
 
     if (resolvedParams.id) {
-      loadCandidatoR2();
+      loadCandidato();
     }
   }, [resolvedParams.id]);
 
-  // 2️⃣ CARREGAMENTO SECUNDÁRIO E ASSÍNCRONO DO SUPABASE (ELO Score & Partidas)
+  // 2️⃣ CARREGAMENTO ESTATÍSTICAS SUPABASE (MANTIDO)
   useEffect(() => {
     async function loadStatsSupabase() {
       if (!resolvedParams.id) return;
-      
+
       try {
         setLoadingStats(true);
         const { data: perfilData, error } = await supabase
@@ -84,21 +58,21 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           .eq('id', resolvedParams.id)
           .maybeSingle();
 
-        if (error) {
-          console.error("Erro ao buscar estatísticas no Supabase:", error);
-          return;
-        }
+        if (error) return;
 
         if (perfilData) {
-          // Atualiza apenas os atributos dinâmicos sem redefinir ou apagar 'candidaturas'
-          setCandidato((prev) => prev ? ({
-            ...prev,
-            elo_score: perfilData.elo_score ?? prev.elo_score ?? 1200,
-            matches_count: perfilData.matches_count ?? prev.matches_count ?? 0,
-          }) : null);
+          setCandidato((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  elo_score: perfilData.elo_score ?? prev.elo_score ?? 1200,
+                  matches_count: perfilData.matches_count ?? prev.matches_count ?? 0,
+                }
+              : null
+          );
         }
       } catch (err) {
-        console.error("Erro ao carregar dados dinâmicos:", err);
+        console.error('Erro ao carregar dinâmicos:', err);
       } finally {
         setLoadingStats(false);
       }
@@ -115,14 +89,8 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   return (
     <main className="max-w-md mx-auto px-4 py-6 text-slate-100">
       <div className="bg-slate-900 rounded-3xl border border-white/10 shadow-xl p-6 flex flex-col items-center">
-        
-        {/* Foto e Identificação Principal */}
         <div className="w-28 h-28 rounded-full overflow-hidden border border-slate-700 bg-slate-950 shadow">
-          <CandidateImage 
-            candidato={candidato} 
-            alt={candidato.nome_completo} 
-            className="w-full h-full object-cover" 
-          />
+          <CandidateImage candidato={candidato} alt={candidato.nome_completo} className="w-full h-full object-cover" />
         </div>
 
         <h1 className="text-xl font-black text-white mt-4 text-center leading-tight">
@@ -132,7 +100,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           {candidato.cargo} • {candidato.partido}
         </p>
 
-        {/* Estatísticas de Duelo */}
         <div className="grid grid-cols-2 gap-4 w-full mt-6 border-t border-white/10 pt-4">
           <div className="text-center border-r border-white/10">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ELO</span>
@@ -148,10 +115,9 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Ficha Técnica */}
         <div className="w-full mt-6 border-t border-white/10 pt-4 space-y-3 text-xs">
           <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ficha do Candidato</h3>
-          
+
           <div className="flex justify-between border-b border-white/5 pb-1.5">
             <span className="text-slate-400">Nome de Urna:</span>
             <span className="font-bold text-white">{candidato.nome_urna || candidato.nome_completo}</span>
@@ -166,19 +132,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
             <span className="text-slate-400">Ano de Referência:</span>
             <span className="font-mono text-white">{anoReferencia}</span>
           </div>
-
-          {candidato.titulo_eleitoral && (
-            <div className="flex justify-between pb-1">
-              <span className="text-slate-500">Inscrição (Título):</span>
-              <span className="font-mono font-bold text-slate-400">****{candidato.titulo_eleitoral.slice(-4)}</span>
-            </div>
-          )}
         </div>
 
-        {/* Histórico de Candidaturas */}
         <div className="w-full mt-6 border-t border-white/10 pt-4">
           <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Histórico de Candidaturas</h3>
-          
+
           {historicoCandidaturas.length > 0 ? (
             <div className="space-y-2.5">
               {historicoCandidaturas.map((cand: any, index: number) => (
@@ -201,7 +159,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
             <p className="text-xs text-slate-500 text-center py-2">Nenhum histórico adicional encontrado.</p>
           )}
         </div>
-
       </div>
 
       <div className="text-center mt-6">

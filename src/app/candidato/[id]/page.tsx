@@ -23,22 +23,19 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         setLoading(true);
 
         // 1️⃣ Busca dados dinâmicos em tempo real (Elo Score e Matches) via Supabase
+        // ⚠️ Removido 'uf' da seleção pois a coluna não existe em perfis_candidatos
         const { data: perfilData, error: errorPerfil } = await supabase
           .from('perfis_candidatos')
-          .select('id, elo_score, matches_count, nome_completo, uf')
+          .select('id, elo_score, matches_count, nome_completo')
           .eq('id', resolvedParams.id)
           .maybeSingle();
 
-        if (errorPerfil || !perfilData) {
+        if (errorPerfil) {
           console.error("Erro ao buscar perfil no Supabase:", errorPerfil);
-          setLoading(false);
-          return;
         }
 
-        // 2️⃣ Define quais arquivos JSON consultar no R2 (prioriza a UF do perfil se disponível)
-        const ufsParaConsultar = perfilData.uf 
-          ? [perfilData.uf.toUpperCase(), 'BR'] 
-          : AVAILABLE_UFS;
+        // 2️⃣ Define quais arquivos JSON consultar no R2
+        const ufsParaConsultar = AVAILABLE_UFS;
 
         let candidatoEncontradoR2: Candidato | null = null;
 
@@ -66,7 +63,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           return;
         }
 
-        // 4️⃣ Prepara e ordena o histórico de candidaturas se houver (Cast de tipo para evitar erro no TypeScript)
+        // 4️⃣ Prepara e ordena o histórico de candidaturas se houver
         const historico = (candidatoEncontradoR2 as any).candidaturas || [];
         const historicoOrdenado = [...historico].sort(
           (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
@@ -74,11 +71,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
         setHistoricoCandidaturas(historicoOrdenado);
 
-        // 5️⃣ Mescla as informações estáticas do R2 com os pontos dinâmicos do Supabase
+        // 5️⃣ Mescla as informações estáticas do R2 com os pontos dinâmicos do Supabase (se perfilData existir)
         setCandidato({
           ...candidatoEncontradoR2,
-          elo_score: perfilData.elo_score ?? candidatoEncontradoR2.elo_score ?? 1200,
-          matches_count: perfilData.matches_count ?? candidatoEncontradoR2.matches_count ?? 0,
+          elo_score: perfilData?.elo_score ?? candidatoEncontradoR2.elo_score ?? 1200,
+          matches_count: perfilData?.matches_count ?? candidatoEncontradoR2.matches_count ?? 0,
         });
 
       } catch (err) {

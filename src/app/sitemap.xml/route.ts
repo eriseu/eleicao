@@ -7,12 +7,15 @@ export async function GET() {
   const siteUrl = getSiteUrl();
 
   try {
+    // Obtém o total de candidatos somando o tamanho de todos os arquivos JSON do R2
     const candidateCount = await getSitemapCandidateCount();
-    const pageCount = Math.ceil(candidateCount / SITEMAP_PAGE_SIZE);
+    const pageCount = Math.ceil(candidateCount / SITEMAP_PAGE_SIZE) || 1;
+
     const sitemaps = [
       `${siteUrl}/sitemap/static.xml`,
       ...Array.from({ length: pageCount }, (_, page) => `${siteUrl}/sitemap/${page}.xml`),
     ];
+
     const body = [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
@@ -27,8 +30,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error('Erro ao gerar índice de sitemap:', error);
     return new Response('Não foi possível gerar o sitemap.', { status: 503 });
   }
 }
-

@@ -1,13 +1,26 @@
-"use client";
+'use client';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
-import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
+import Link from 'next/link';
 import { AVAILABLE_UFS } from '@/constants/elections';
+
+const ufToStateName: { [key: string]: string } = {
+  'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas', 'BA': 'Bahia',
+  'CE': 'Ceará', 'DF': 'Distrito Federal', 'ES': 'Espírito Santo', 'GO': 'Goiás',
+  'MA': 'Maranhão', 'MT': 'Mato Grosso', 'MS': 'Mato Grosso do Sul', 'MG': 'Minas Gerais',
+  'PA': 'Pará', 'PB': 'Paraíba', 'PR': 'Paraná', 'PE': 'Pernambuco', 'PI': 'Piauí',
+  'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte', 'RS': 'Rio Grande do Sul',
+  'RO': 'Rondônia', 'RR': 'Roraima', 'SC': 'Santa Catarina', 'SP': 'São Paulo',
+  'SE': 'Sergipe', 'TO': 'Tocantins', 'BR': 'Brasil'
+};
+
+function getStateNameFromUf(uf: string): string {
+  return ufToStateName[uf.toUpperCase()] || uf;
+}
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -21,45 +34,33 @@ const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
 };
 
-const CARGOS_ESTADUAIS_NACIONAIS = [
-  'PRESIDENTE',
-  'VICE-PRESIDENTE',
-  'GOVERNADOR',
-  'VICE-GOVERNADOR',
-  'SENADOR',
-  'DEPUTADO FEDERAL',
-  'DEPUTADO ESTADUAL',
-  'DEPUTADO DISTRITAL',
-];
+const ITEMS_PER_PAGE = 10;
 
-export default function DueloClient() {
+function RankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sharedUf = searchParams.get('uf');
-  const sharedC1Id = searchParams.get('c1');
-  const sharedC2Id = searchParams.get('c2');
-  const isSharedDuel = Boolean(sharedC1Id && sharedC2Id);
-  const hasValidSharedUf = Boolean(
-    sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf)
-  );
+  
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const [candidates, setCandidates] = useState<Candidato[]>([]);
-  const [c1, setC1] = useState<Candidato | null>(null);
-  const [c2, setC2] = useState<Candidato | null>(null);
-  const [selectedUf, setSelectedUf] = useState(
-    sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf) ? sharedUf : 'BR'
-  );
-  const [selectedMunicipio, setSelectedMunicipio] = useState('');
-  const [municipios, setMunicipios] = useState<string[]>([]);
-  const [loadingCandidates, setLoadingCandidates] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const requestedUf = searchParams.get('uf')?.toUpperCase();
+  const initialUf = requestedUf && AVAILABLE_UFS.some(uf => uf === requestedUf)
+    ? requestedUf 
+    : 'BR';
 
-  // Busca de municípios corrigida usando a API correta de municípios por UF
+  const [ranking, setRanking] = useState<Candidato[]>([]);
+  const [page, setPage] = useState(0);
+  const [municipios, setMunicipios] = useState<string[]>([]);
+  const [selectedUf, setSelectedUf] = useState(initialUf);
+  const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
+  const [highlightedId, setHighlightedId] = useState(searchParams.get('highlight') || '');
+  const [loading, setLoading] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+
+  // Busca de Municípios
   useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
@@ -71,7 +72,6 @@ export default function DueloClient() {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
         if (!response.ok) {
-          console.error("Falha ao buscar municípios do VPS");
           setMunicipios([]);
           return;
         }
@@ -82,10 +82,9 @@ export default function DueloClient() {
             .map((item: any) => item.municipio?.trim())
             .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
         ).sort() as string[];
-        
         setMunicipios(uniqueMunicipios);
-      } catch (error) {
-        console.error("Erro ao carregar municípios:", error);
+      } catch (err) {
+        console.error("Erro ao buscar municípios:", err);
         setMunicipios([]);
       }
     }
@@ -94,436 +93,331 @@ export default function DueloClient() {
   }, [selectedUf]);
 
   const getCargosPorEscopo = useCallback(() => {
-      if (selectedUf === 'BR') {
-        return CARGOS_POR_ESCOPO.nacional;
-      }
-      // Se houver município selecionado: apenas cargos MUNICIPAIS
-      if (selectedMunicipio) {
-        return CARGOS_POR_ESCOPO.municipal;
-      }
-      // Apenas ESTADO selecionado: apenas cargos ESTADUAIS (Deputados, Governador, Senador)
-      return CARGOS_POR_ESCOPO.estadual;
-    }, [selectedUf, selectedMunicipio]);
+    if (selectedUf === 'BR') {
+      return CARGOS_POR_ESCOPO.nacional;
+    }
+    if (selectedMunicipio) {
+      return CARGOS_POR_ESCOPO.municipal;
+    }
+    return CARGOS_POR_ESCOPO.estadual;
+  }, [selectedUf, selectedMunicipio]);
 
-  // Função robusta de mapeamento e tratamento de fotos idêntica ao app/page
-  const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
-      const perfisIncluidos = new Set<string>();
-      return perfis.flatMap((perfil) => {
-        if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) return [];
-        perfisIncluidos.add(perfil.id);
+  // Carregamento do Ranking integrado via R2 + Elo do Supabase
+  const fetchRankingData = useCallback(async (currentPage: number, cargos: string[], targetHighlightId?: string) => {
+    try {
+      // 1. Carrega o JSON da UF direto da CDN do R2
+      const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
+      const resR2 = await fetch(r2Url);
+      
+      if (!resR2.ok) return [];
 
-        const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
-        if (candsDoPerfil.length === 0) return [];
+      const todosCandidatosR2: Candidato[] = await resR2.json();
 
-        // Ordena do ano mais recente ao mais antigo
-        const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
-        const candidaturaMaisRecente = sortedCands[0];
+      // 2. Filtra em memória conforme o escopo e município selecionado
+      const cargosUpper = cargos.map(c => c.toUpperCase().trim());
+      const candidatosFiltrados = todosCandidatosR2.filter(c => {
+        const cargoCand = (c.cargo || '').toUpperCase().trim();
+        const condCargo = cargosUpper.includes(cargoCand);
+        
+        if (!condCargo) return false;
 
-        // REGRA DE CORREÇÃO (Eduardo Botelho e similares):
-        // 1. Procura se ele já disputou algum cargo Estadual/Nacional no histórico
-        const candidaturaEstadualOuNacional = sortedCands.find((c: any) =>
-          CARGOS_ESTADUAIS_NACIONAIS.includes((c.cargo || '').toUpperCase().trim())
-        );
+        if (selectedMunicipio) {
+          return (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim();
+        }
 
-        // 2. Define a candidatura de referência de escopo:
-        // Se ele já foi Deputado/Gov/Senador, a referência de escopo SERÁ essa candidatura estadual,
-        // libertando-o do município onde ele disputou para Prefeito depois!
-        const candidaturaReferencia = candidaturaEstadualOuNacional || candidaturaMaisRecente;
+        return true;
+      });
 
-        // Resolução de Foto Mais Recente
-        const candidaturaComFoto = sortedCands.find((c: any) => {
-          const foto = c.foto || c.sq_candidato;
-          if (!foto) return false;
-          const fotoStr = String(foto);
-          return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
+      if (candidatosFiltrados.length === 0) return [];
+
+      const idsFiltrados = candidatosFiltrados.map(c => c.id);
+
+      // 3. Descobre a página caso exista um id em destaque
+      let actualPage = currentPage;
+      if (targetHighlightId && idsFiltrados.includes(targetHighlightId)) {
+        const { data: allRankedIds } = await supabase.rpc('get_ranking_paginado', {
+          ids: idsFiltrados,
+          limite: idsFiltrados.length,
+          deslocamento: 0
         });
 
-        const fotoFinal = candidaturaComFoto 
-          ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
-          : candidaturaMaisRecente.foto;
+        if (allRankedIds) {
+          const index = allRankedIds.findIndex((p: any) => p.id === targetHighlightId);
+          if (index !== -1) {
+            actualPage = Math.floor(index / ITEMS_PER_PAGE);
+            if (actualPage !== page) {
+              setPage(actualPage);
+            }
+          }
+        }
+      }
 
-        return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score ?? 1200,
-          matches_count: perfil.matches_count ?? 0,
-          nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
-          partido: candidaturaMaisRecente.partido || 'S/P',
-          
-          // EXIBIÇÃO: Mostra o cargo estadual se ele tiver, ou o mais recente caso contrário
-          cargo: candidaturaReferencia.cargo,
-          uf: candidaturaReferencia.uf,
-          
-          // SE O CARGO É ESTADUAL/NACIONAL, O MUNICÍPIO FICA VAZIO/NULO NO PERFIL GERAL!
-          // Isso impede que ele fique preso a um município específico na busca.
-          municipio: CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
-            ? '' 
-            : candidaturaReferencia.municipio,
-
-          foto: fotoFinal,
-          candidaturas: sortedCands,
-          ultima_candidatura: {
-            ...candidaturaMaisRecente,
-            foto: fotoFinal,
-            perfil_id: perfil.id,
-            created_at: perfil.created_at,
-            sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
-          },
-        }];
+      // 4. Busca os IDs paginados ordenados por Elo Score via RPC do Supabase
+      const from = actualPage * ITEMS_PER_PAGE;
+      const { data: pageData, error } = await supabase.rpc('get_ranking_paginado', {
+        ids: idsFiltrados,
+        limite: ITEMS_PER_PAGE,
+        deslocamento: from
       });
-    };
 
-// Lógica de carregamento direto do R2 (JSON estático por UF)
-  const loadData = useCallback(async () => {
-    setLoadingCandidates(true);
-    try {
-      if (isSharedDuel) {
-        // Se for duelo compartilhado, busca os perfis específicos no Supabase
-        const { data: perfisData, error } = await supabase
-          .from('perfis_candidatos')
-          .select('*')
-          .in('id', [sharedC1Id!, sharedC2Id!]);
-
-        if (error || !perfisData) {
-          setCandidates([]);
-          setLoadingCandidates(false);
-          return;
-        }
-
-        const candidaturas = (await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!])) || [];
-        const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
-        setCandidates(mappedDataFinal);
-        setLoadingCandidates(false);
-        if (!hasValidSharedUf && mappedDataFinal[0]?.uf) {
-          setSelectedUf(mappedDataFinal[0].uf);
-        }
-        return;
+      if (error || !pageData || pageData.length === 0) {
+        setHasMore(false);
+        return [];
       }
 
-      // 🚀 BUSCA DIRETA DO R2 (JSON da UF selecionada)
-      const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
-      const response = await fetch(r2Url);
-      
-      if (!response.ok) {
-        console.error(`Falha ao carregar JSON da UF ${selectedUf} do R2`);
-        setCandidates([]);
-        setLoadingCandidates(false);
-        return;
-      }
+      setHasMore(pageData.length === ITEMS_PER_PAGE);
 
-      const candidatosDoR2: Candidato[] = await response.json();
-      setCandidates(candidatosDoR2);
+      // 5. Mescla as informações completas do R2 com o elo_score ordenado do Supabase
+      const mapaR2 = new Map(candidatosFiltrados.map(c => [c.id, c]));
 
-    } catch (error) {
-      console.error('Erro ao buscar candidatos do R2 para o duelo:', error);
-      setCandidates([]);
-    } finally {
-      setLoadingCandidates(false);
+      const rankingOrdenado: Candidato[] = pageData.map((p: any) => {
+        const candR2 = mapaR2.get(p.id);
+        if (!candR2) return null;
+
+        return {
+          ...candR2,
+          elo_score: p.elo_score ?? candR2.elo_score ?? 1200,
+          matches_count: p.matches_count ?? candR2.matches_count ?? 0,
+        };
+      }).filter(Boolean) as Candidato[];
+
+      return rankingOrdenado;
+
+    } catch (err) {
+      console.error('Erro ao buscar dados do ranking do R2/Supabase:', err);
+      return [];
     }
-  }, [isSharedDuel, selectedUf, hasValidSharedUf, sharedC1Id, sharedC2Id]);
+  }, [selectedUf, selectedMunicipio, page]);
+
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    if (!isMounted) return;
 
-  const getCandidateLabel = (candidate: Candidato) => {
-    const nome = candidate.ultima_candidatura?.nome_urna || candidate.nome_urna || candidate.nome_completo;
-    const partido = candidate.ultima_candidatura?.partido || candidate.partido;
-    return `${nome}${partido ? ` (${partido})` : ''}`;
-  };
+    const loadRanking = async () => {
+      setLoading(true);
+      const cargos = getCargosPorEscopo();
 
-  const filteredCandidates = useMemo(() => {
-    if (isSharedDuel) return candidates;
-
-    // Obtém os cargos permitidos para o escopo selecionado (Nacional, Estadual ou Municipal)
-    const cargosPermitidos = getCargosPorEscopo();
-
-    return candidates
-      .filter((candidate) => {
-        // 1. Validação de UF
-        if (candidate.uf !== selectedUf) return false;
-
-        // 2. Validação de Município (se selecionado, exige que coincida)
-        if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
-
-        // 3. REGRA DE OURO: Validação Estrita de Cargo por Escopo
-        // Pega o cargo da última candidatura (ou do objeto base)
-        const cargoCandidato = (
-          candidate.ultima_candidatura?.cargo || 
-          candidate.cargo || 
-          ''
-        ).toUpperCase().trim();
-
-        // Se o cargo não estiver na lista permitida para o escopo, bloqueia!
-        const cargoValido = cargosPermitidos.some(
-          (c) => c.toUpperCase().trim() === cargoCandidato
-        );
-
-        return cargoValido;
-      })
-      .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
-  }, [candidates, isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo]);
-
-  const availableCandidatesCount = filteredCandidates.length;
-  const canClearFilters = selectedUf !== 'BR' || selectedMunicipio !== '';
-
-  const resetFilters = () => {
-    setSelectedUf('BR');
-    setSelectedMunicipio('');
-  };
-
-  const randomizeMatch = () => {
-    if (filteredCandidates.length < 2) return;
-    const shuffled = [...filteredCandidates].sort(() => Math.random() - 0.5);
-    setC1(shuffled[0]);
-    setC2(shuffled.find((candidate) => candidate.id !== shuffled[0].id) || null);
-  };
-
-  const displayedCandidates = useMemo(() => {
-    const selected = [c1, c2].filter(Boolean) as Candidato[];
-    const chosen = [...selected];
-
-    if (chosen.length === 2) return chosen;
-
-    const fallback = filteredCandidates.filter(
-      (candidate) => candidate.id !== c1?.id && candidate.id !== c2?.id
-    );
-
-    while (chosen.length < 2 && fallback.length > 0) {
-      chosen.push(fallback.shift()!);
-    }
-
-    return chosen;
-  }, [filteredCandidates, c1, c2]);
-
-  const getRankingUrl = (candidate: Candidato) => {
-      const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
-      const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
-      
-      // Determina o escopo com base no estado/município selecionados no momento do duelo
-      const escopo = selectedMunicipio ? 'municipal' : (selectedUf === 'BR' ? 'nacional' : 'estadual');
-
-      const params = new URLSearchParams({ 
-        uf, 
-        escopo,
-        highlight: candidate.id 
-      });
-
-      if (selectedMunicipio && municipio) {
-        params.set('municipio', municipio);
-      }
-
-      return `/ranking?${params.toString()}`;
+      const rankingData = await fetchRankingData(page, cargos, highlightedId);
+      setRanking(rankingData);
+      setLoading(false);
     };
 
-  const escolher = async (escolhido: Candidato, outro: Candidato) => {
-    if (submitting) return;
-    setSubmitting(true);
-    setFeedback('');
+    void loadRanking();
+  }, [isMounted, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData, highlightedId]);
+
+  useEffect(() => {
+    if (!highlightedId || loading) return;
+    document.getElementById(`ranking-${highlightedId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [highlightedId, loading, ranking]);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    const params = new URLSearchParams();
+    if (selectedUf) params.set('uf', selectedUf);
+    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
+    router.replace(`/ranking?${params.toString()}`);
+  }, [isMounted, selectedUf, selectedMunicipio, router]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [selectedUf, selectedMunicipio]);
+
+  const handleShare = async () => {
+    const region = selectedMunicipio || getStateNameFromUf(selectedUf);
+    const shareUrl = new URL(window.location.href);
+    shareUrl.searchParams.delete('highlight');
+
+    const shareData = {
+      title: 'Ranking Duelo Político',
+      text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
+      url: shareUrl.toString(),
+    };
+
     try {
-      const response = await fetch('/api/duelo/votar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vencedorId: escolhido.id,
-          perdedorId: outro.id,
-        }),
-      });
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 409) {
-          router.replace(getRankingUrl(escolhido));
-          return;
-        }
-        setFeedback(result.error || 'Não foi possível concluir a comparação.');
-        return;
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(shareData.url);
+        setShareFeedback('Link copiado para a área de transferência!');
+        setTimeout(() => setShareFeedback(''), 3000);
       }
-
-      router.replace(getRankingUrl(escolhido));
     } catch (error) {
-      console.error('Erro ao registrar escolha:', error);
-      setFeedback('Não foi possível concluir a comparação.');
-    } finally {
-      setSubmitting(false);
+      console.error('Erro ao compartilhar:', error);
+      try {
+        await navigator.clipboard.writeText(shareData.url);
+        setShareFeedback('Link copiado para a área de transferência!');
+        setTimeout(() => setShareFeedback(''), 3000);
+      } catch (copyError) {
+        console.error('Erro ao copiar o link:', copyError);
+        setShareFeedback('Não foi possível compartilhar ou copiar o link.');
+        setTimeout(() => setShareFeedback(''), 3000);
+      }
     }
-  };
-
-  const handleShare = () => {
-    if (!c1 || !c2) return;
-    const params = new URLSearchParams({ uf: selectedUf, c1: c1.id, c2: c2.id });
-    const shareUrl = `${window.location.origin}/duelo?${params.toString()}`;
-    navigator.clipboard.writeText(shareUrl);
-    alert('Link copiado para compartilhar seu duelo!');
   };
 
   if (!isMounted) {
-    return <div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando duelo...</div>;
+    return <div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando ranking...</div>;
   }
-  
+
   return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 pb-32">
+      <main className="bg-slate-950 text-slate-100 pb-28">
         <div className="mx-auto max-w-3xl px-4 py-6">
           <header className="text-center mb-6">
-            <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Duelo Político</p>
-            <h1 className="mt-2 text-3xl font-black text-white">Quem representa melhor suas escolhas?</h1>
+            <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Ranking</p>
+            <h1 className="mt-2 text-3xl font-black text-white">Top Candidatos</h1>
             <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-400">
-              {isSharedDuel
-                ? 'Toque na foto da sua escolha.'
-                : 'Filtre por Brasil, estado ou município e toque na foto da sua escolha.'}
+              Filtre por Brasil, estado ou município para ver os candidatos com maior elo.
             </p>
           </header>
 
-          {!isSharedDuel && <section className="mb-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-slate-950/30">
+          <section className="mb-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-slate-950/30">
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block">
-                <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Brasil / UF</span>
+                <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Estado</span>
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedUf}
-                  disabled={isSharedDuel}
                   onChange={(event) => {
                     setSelectedUf(event.target.value);
                     setSelectedMunicipio('');
+                    setHighlightedId('');
+                    setPage(0);
                   }}
                 >
-                  {AVAILABLE_UFS.map((uf) => (
+                  <option value="BR">Brasil</option>
+                  {AVAILABLE_UFS.filter((uf) => uf !== 'BR').map((uf) => (
                     <option key={uf} value={uf}>{uf}</option>
                   ))}
                 </select>
               </label>
-
               <label className="block">
                 <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Município</span>
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedMunicipio}
-                  onChange={(event) => setSelectedMunicipio(event.target.value)}
-                  disabled={isSharedDuel || selectedUf === 'BR'}
+                  onChange={(event) => {
+                    setSelectedMunicipio(event.target.value);
+                    setHighlightedId('');
+                    setPage(0);
+                  }}
+                  disabled={selectedUf === 'BR'}
                 >
-                  <option value="">Todos</option>
+                  <option value="">Todos os Municípios</option>
                   {municipios.map((municipio) => (
                     <option key={municipio} value={municipio}>{municipio}</option>
                   ))}
                 </select>
               </label>
-
-                {/* Substituir o bloco do Escopo Atual por uma versão inline e compacta */}
-                <div className="flex flex-col justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Escopo</span>
-                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-emerald-400">
-                      {selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}
-                    </span>
-                  </div>
-                  
-                  <div className="flex gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      disabled={isSharedDuel || !canClearFilters}
-                      className="flex-1 rounded-xl border border-slate-700 bg-slate-800 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
-                    >
-                      Limpar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={randomizeMatch}
-                      disabled={isSharedDuel || loadingCandidates || availableCandidatesCount < 2}
-                      className="flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-40"
-                    >
-                      Aleatório
-                    </button>
-                  </div>
+              <div className="flex flex-col items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Escopo</p>
+                  <p className="mt-2 text-sm text-slate-200">{selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}</p>
                 </div>
-            </div>
-          </section>}
-
-          {!isSharedDuel && <section className="mb-6 grid gap-4 sm:grid-cols-2">
-            <CandidateAutocomplete
-              label="Candidato 1"
-              selected={c1}
-              onSelect={setC1}
-              uf={selectedUf}
-              municipio={selectedMunicipio}
-              excludeId={c2?.id}
-              disabled={loadingCandidates}
-            />
-            <CandidateAutocomplete
-              label="Candidato 2"
-              selected={c2}
-              onSelect={setC2}
-              uf={selectedUf}
-              municipio={selectedMunicipio}
-              excludeId={c1?.id}
-              disabled={loadingCandidates}
-            />
-          </section>}
-
-          <section className={isSharedDuel ? 'mx-auto grid w-full max-w-sm grid-cols-2 gap-4' : 'grid gap-4 sm:grid-cols-2'}>
-            {displayedCandidates.slice(0, 2).map((candidate, index) => {
-              const otherCandidate = displayedCandidates[index === 0 ? 1 : 0];
-              if (isSharedDuel) {
-                return (
-                  <button
-                    key={candidate.id}
-                    type="button"
-                    className="relative aspect-[3/4] w-full overflow-hidden rounded-[28px] border border-white/10 bg-slate-800 shadow-xl transition hover:-translate-y-1 hover:border-emerald-500/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 disabled:cursor-wait disabled:opacity-60"
-                    onClick={() => otherCandidate && void escolher(candidate, otherCandidate)}
-                    disabled={submitting || !otherCandidate}
-                    aria-label={`Escolher ${candidate.nome_urna || candidate.nome_completo}`}
-                  >
-                    <CandidateImage candidato={candidate} alt={candidate.nome_completo} className="h-full w-full object-cover" />
-                  </button>
-                );
-              }
-
-              return (
-              <div key={candidate.id} className="rounded-[32px] border border-white/10 bg-slate-900/80 shadow-xl shadow-slate-950/30 transition hover:-translate-y-1">
                 <button
                   type="button"
-                  className="relative block w-full overflow-hidden rounded-t-[32px] bg-slate-800 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-60"
-                  onClick={() => otherCandidate && void escolher(candidate, otherCandidate)}
-                  disabled={submitting || !otherCandidate}
-                  aria-label={`Escolher ${candidate.nome_urna || candidate.nome_completo}`}
+                  onClick={() => {
+                    setSelectedUf('BR');
+                    setSelectedMunicipio('');
+                    setHighlightedId('');
+                    setPage(0);
+                  }}
+                  disabled={selectedUf === 'BR' && selectedMunicipio === ''}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <CandidateImage candidato={candidate} alt={candidate.nome_completo} className="h-56 w-full object-cover sm:h-72" />
+                  Limpar filtros
                 </button>
-                <div className="space-y-3 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300">{candidate.cargo} · {candidate.partido}</p>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">UF / Município</p>
-                      <p className="mt-1 text-sm text-slate-200">{candidate.uf} · {candidate.municipio}</p>
-                    </div>
-                    <div className="rounded-3xl bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-300">
-                      Elo {candidate.elo_score}
-                    </div>
-                  </div>
-                  <p className="rounded-3xl bg-slate-950/70 px-4 py-3 text-sm text-slate-300">Toque na foto para escolher.</p>
-                </div>
               </div>
-              );
-            })}
+            </div>
           </section>
 
-          {feedback && <p className="mt-6 text-center text-sm text-emerald-300">{feedback}</p>}
+          <section className="space-y-3">
+            {loading ? (
+              <div className="rounded-[32px] border border-dashed border-slate-700 bg-slate-900/80 p-8 text-center text-sm text-slate-400">
+                Carregando candidatos...
+              </div>
+            ) : ranking.length > 0 ? (
+              ranking.map((cand, index) => (
+                <Link
+                  href={`/candidato/${cand.id}`}
+                  key={cand.id}
+                  id={`ranking-${cand.id}`}
+                  className={`group flex items-center gap-4 rounded-[28px] border p-4 transition ${
+                    cand.id === highlightedId
+                      ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-400/40'
+                      : 'border-white/10 bg-slate-900/80 hover:border-slate-500 hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl border border-slate-700 bg-slate-950">
+                    <CandidateImage candidato={cand} alt={cand.nome_completo} className="h-full w-full object-cover rounded-3xl" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-bold text-white">{cand.nome_urna || cand.nome_completo}</p>
+                      <div className="flex items-center gap-2">
+                        {cand.id === highlightedId && (
+                          <span className="hidden rounded-full bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase text-slate-950 sm:inline">Destaque</span>
+                        )}
+                        <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * ITEMS_PER_PAGE + index + 1}º</span>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-400">{cand.cargo} · {cand.partido}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{cand.municipio ? `${cand.municipio} · ` : ''}{cand.uf}</p>
+                  </div>
+                  <div className="rounded-3xl bg-slate-950 px-4 py-2 text-right">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Elo</p>
+                    <p className="text-lg font-black text-white">{cand.elo_score}</p>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className="rounded-[32px] border border-dashed border-slate-700 bg-slate-900/80 p-8 text-center text-sm text-slate-400">
+                Nenhum candidato encontrado para esse filtro.
+              </div>
+            )}
+          </section>
 
-          {!isSharedDuel && <div className="mt-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
-            <p className="font-semibold text-white">Dica</p>
-            <p className="mt-2">Use os filtros para comparar candidatos do seu estado ou município e toque diretamente em uma das fotos.</p>
-          </div>}
+          <div className="mt-6 flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
+            <button
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+              className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Anterior
+            </button>
+            <span className="font-bold text-white">Página {page + 1}</span>
+            <button
+              disabled={!hasMore || ranking.length < ITEMS_PER_PAGE}
+              onClick={() => setPage((p) => p + 1)}
+              className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Próxima
+            </button>
+          </div>
 
-          {!isSharedDuel && <button
-            type="button"
-            onClick={handleShare}
-            className="mt-6 w-full rounded-3xl bg-indigo-600 px-5 py-4 text-sm font-semibold text-white shadow-xl shadow-indigo-600/20 transition hover:bg-indigo-500"
-          >
-            Compartilhar Duelo 🔗
-          </button>}
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="inline-flex items-center justify-center rounded-full border border-emerald-500 bg-emerald-500 px-8 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 hover:border-emerald-400"
+            >
+              Compartilhar Ranking
+            </button>
+            {shareFeedback && (
+              <p className="mt-3 text-xs text-emerald-300">{shareFeedback}</p>
+            )}
+          </div>
+
         </div>
       </main>
+  );
+}
+
+export default function Ranking() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando ranking...</div>}>
+      <RankingContent />
+    </Suspense>
   );
 }

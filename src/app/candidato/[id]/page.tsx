@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import type { Candidato } from '@/types';
 
-// 🎯 Força o Next.js a ignorar caches agressivos de rota em desenvolvimento
 export const dynamic = 'force-dynamic';
 
 export default function Perfil({ params }: { params: Promise<{ id: string }> }) {
@@ -16,31 +15,17 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   const [candidato, setCandidato] = useState<Candidato | null>(null);
   const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
 
+  // 1️⃣ CARREGAMENTO INSTANTÂNEO DO R2
   useEffect(() => {
-    async function loadCandidatoCompleto() {
+    async function loadCandidatoR2() {
       try {
         setLoading(true);
-
-        // 1️⃣ Busca dados dinâmicos em tempo real (Elo Score e Matches) via Supabase
-        // ⚠️ Removido 'uf' da seleção pois a coluna não existe em perfis_candidatos
-        const { data: perfilData, error: errorPerfil } = await supabase
-          .from('perfis_candidatos')
-          .select('id, elo_score, matches_count, nome_completo')
-          .eq('id', resolvedParams.id)
-          .maybeSingle();
-
-        if (errorPerfil) {
-          console.error("Erro ao buscar perfil no Supabase:", errorPerfil);
-        }
-
-        // 2️⃣ Define quais arquivos JSON consultar no R2
-        const ufsParaConsultar = AVAILABLE_UFS;
-
         let candidatoEncontradoR2: Candidato | null = null;
 
-        // 3️⃣ Busca nos arquivos JSON da CDN R2
-        for (const uf of ufsParaConsultar) {
+        // Busca nos arquivos JSON estáticos da CDN R2
+        for (const uf of AVAILABLE_UFS) {
           try {
             const res = await fetch(`https://fotos.centraleti.com.br/candidatos/${uf}.json`);
             if (!res.ok) continue;
@@ -57,43 +42,74 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           }
         }
 
-        if (!candidatoEncontradoR2) {
-          console.error("Candidato não encontrado nos arquivos JSON do R2.");
-          setLoading(false);
+        if (candidatoEncontradoR2) {
+          // Extrai e ordena as candidaturas contidas no JSON
+          const historico = (candidatoEncontradoR2 as any).candidaturas || [];
+          const historicoOrdenado = [...historico].sort(
+            (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
+          );
+
+          setHistoricoCandidaturas(historicoOrdenado);
+          
+          // Exibe o perfil IMEDIATAMENTE preservando o array candidaturas
+          setCandidato({
+            ...candidatoEncontradoR2,
+            candidaturas: historicoOrdenado,
+            elo_score: candidatoEncontradoR2.elo_score ?? 1200,
+            matches_count: candidatoEncontradoR2.matches_count ?? 0,
+          } as Candidato);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar dados do R2:", err);
+      } finally {
+        setLoading(false); // Libera a renderização da página na hora
+      }
+    }
+
+    if (resolvedParams.id) {
+      loadCandidatoR2();
+    }
+  }, [resolvedParams.id]);
+
+  // 2️⃣ CARREGAMENTO SECUNDÁRIO E ASSÍNCRONO DO SUPABASE (ELO Score & Partidas)
+  useEffect(() => {
+    async function loadStatsSupabase() {
+      if (!resolvedParams.id) return;
+      
+      try {
+        setLoadingStats(true);
+        const { data: perfilData, error } = await supabase
+          .from('perfis_candidatos')
+          .select('elo_score, matches_count')
+          .eq('id', resolvedParams.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Erro ao buscar estatísticas no Supabase:", error);
           return;
         }
 
-        // 4️⃣ Prepara e ordena o histórico de candidaturas se houver
-        const historico = (candidatoEncontradoR2 as any).candidaturas || [];
-        const historicoOrdenado = [...historico].sort(
-          (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
-        );
-
-        setHistoricoCandidaturas(historicoOrdenado);
-
-        // 5️⃣ Mescla as informações estáticas do R2 com os pontos dinâmicos do Supabase (se perfilData existir)
-        setCandidato({
-          ...candidatoEncontradoR2,
-          elo_score: perfilData?.elo_score ?? candidatoEncontradoR2.elo_score ?? 1200,
-          matches_count: perfilData?.matches_count ?? candidatoEncontradoR2.matches_count ?? 0,
-        });
-
+        if (perfilData) {
+          // Atualiza apenas os atributos dinâmicos sem redefinir ou apagar 'candidaturas'
+          setCandidato((prev) => prev ? ({
+            ...prev,
+            elo_score: perfilData.elo_score ?? prev.elo_score ?? 1200,
+            matches_count: perfilData.matches_count ?? prev.matches_count ?? 0,
+          }) : null);
+        }
       } catch (err) {
-        console.error("Erro geral no carregamento do perfil:", err);
+        console.error("Erro ao carregar dados dinâmicos:", err);
       } finally {
-        setLoading(false);
+        setLoadingStats(false);
       }
     }
-    
-    if (resolvedParams.id) {
-      loadCandidatoCompleto();
-    }
+
+    loadStatsSupabase();
   }, [resolvedParams.id]);
 
   if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
   if (!candidato) return <p className="text-center mt-12 text-red-400">Candidato não encontrado.</p>;
 
-  // Busca o ano da candidatura mais recente ou do objeto estático
   const anoReferencia = historicoCandidaturas[0]?.ano_eleicao || (candidato as any).ano_eleicao || '2024';
 
   return (
@@ -103,10 +119,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         {/* Foto e Identificação Principal */}
         <div className="w-28 h-28 rounded-full overflow-hidden border border-slate-700 bg-slate-950 shadow">
           <CandidateImage 
-            candidato={{
-              ...candidato,
-              candidaturas: historicoCandidaturas
-            }} 
+            candidato={candidato} 
             alt={candidato.nome_completo} 
             className="w-full h-full object-cover" 
           />
@@ -123,11 +136,15 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         <div className="grid grid-cols-2 gap-4 w-full mt-6 border-t border-white/10 pt-4">
           <div className="text-center border-r border-white/10">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ELO</span>
-            <span className="text-lg font-black text-emerald-400">{candidato.elo_score}</span>
+            <span className={`text-lg font-black text-emerald-400 transition-opacity duration-300 ${loadingStats ? 'opacity-40 animate-pulse' : 'opacity-100'}`}>
+              {candidato.elo_score}
+            </span>
           </div>
           <div className="text-center">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Duelos</span>
-            <span className="text-lg font-black text-slate-200">{candidato.matches_count || 0}</span>
+            <span className={`text-lg font-black text-slate-200 transition-opacity duration-300 ${loadingStats ? 'opacity-40 animate-pulse' : 'opacity-100'}`}>
+              {candidato.matches_count || 0}
+            </span>
           </div>
         </div>
 

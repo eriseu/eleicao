@@ -62,35 +62,38 @@ function RankingContent() {
 
   // Busca de Municípios
   useEffect(() => {
-    if (selectedUf === 'BR') {
-      setMunicipios([]);
-      setSelectedMunicipio('');
-      return;
-    }
+      if (!isMounted) return;
 
-    async function loadMunicipios() {
-      try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
-        if (!response.ok) {
-          setMunicipios([]);
-          return;
+      const params = new URLSearchParams(window.location.search);
+      let changed = false;
+
+      if (selectedUf) {
+        if (params.get('uf') !== selectedUf) {
+          params.set('uf', selectedUf);
+          changed = true;
         }
-        const data = await response.json();
-
-        const uniqueMunicipios = Array.from(
-          new Set((data || [])
-            .map((item: any) => item.municipio?.trim())
-            .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
-        ).sort() as string[];
-        setMunicipios(uniqueMunicipios);
-      } catch (err) {
-        console.error("Erro ao buscar municípios:", err);
-        setMunicipios([]);
+      } else {
+        params.delete('uf');
       }
-    }
 
-    void loadMunicipios();
-  }, [selectedUf]);
+      if (selectedMunicipio) {
+        if (params.get('municipio') !== selectedMunicipio) {
+          params.set('municipio', selectedMunicipio);
+          changed = true;
+        }
+      } else {
+        if (params.has('municipio')) {
+          params.delete('municipio');
+          changed = true;
+        }
+      }
+
+      // Apenas atualiza os parâmetros na URL sem forçar redirecionamento do Next.js
+      if (changed) {
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState(null, '', newUrl);
+      }
+    }, [isMounted, selectedUf, selectedMunicipio]);
 
   const getCargosPorEscopo = useCallback(() => {
     if (selectedUf === 'BR') {

@@ -15,7 +15,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
 
     const fallbackQueue: string[] = [];
 
-    // Coleta o objeto principal, última candidatura e o array de histórico injetado
+    // Coleta o objeto principal, última candidatura e o histórico
     const historicoGeral = [
       candidato,
       candidato.ultima_candidatura,
@@ -23,49 +23,66 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       ...(candidato.historico || [])
     ].filter(Boolean);
 
-    // Itera por cada ano/candidatura encontrada no histórico
     historicoGeral.forEach((cand: any) => {
-      const ano = cand.ano_eleicao || 2026;
+      const ano = cand.ano_eleicao || candidato.ano_eleicao || 2026;
       const uf = cand.uf || candidato.uf || 'BR';
       const fotoRef = cand.foto || cand.sq_candidato;
 
       if (!fotoRef) return;
 
-      const fotoStr = String(fotoRef).trim();
+      let fotoStr = String(fotoRef).trim();
 
+      // 1. Se for URL absoluta, usa diretamente
       if (fotoStr.startsWith('http')) {
         fallbackQueue.push(fotoStr);
         return;
       }
 
+      // Descreve e ignora avatares padrão
       if (fotoStr && fotoStr !== 'avatar.png' && fotoStr !== 'avatar') {
-        // Limpa a extensão atual do nome para podermos testar variações de extensão (.jpg, .jpeg, .png)
-        const nomeBase = fotoStr.replace(/\.(jpg|jpeg|png)$/i, '');
+        
+        // 2. Extrai o nome do arquivo se o campo contiver o caminho do ZIP (ex: "zip_file.zip/FDF123_div.jpg")
+        if (fotoStr.includes('/')) {
+          fotoStr = fotoStr.split('/').pop() || fotoStr;
+        }
 
+        // 3. Obtém o nome base limpo removendo a extensão (.jpg, .jpeg, .png)
+        const nomeBase = fotoStr.replace(/\.(jpg|jpeg|png)$/i, '');
         const extensoesPossiveis = ['jpg', 'jpeg', 'png'];
 
-        // Se for de 2022 para frente, testa no domínio fotos.centraleti.com.br
+        // A. Primeiro tenta o NOME EXACTO gravado no campo foto
+        if (ano >= 2022) {
+          fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${fotoStr}`);
+        }
+        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${fotoStr}`);
+
+        // B. Tenta o nome base com variações de extensão (.jpg, .jpeg, .png)
         if (ano >= 2022) {
           extensoesPossiveis.forEach(ext => {
             fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${nomeBase}.${ext}`);
           });
         }
 
-        // Testa no domínio f.centraleti.com.br/f/
         extensoesPossiveis.forEach(ext => {
           fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${nomeBase}.${ext}`);
         });
 
-        // Adiciona também o nome exato original que veio do banco caso ele já possua alguma formatação específica
-        if (ano >= 2022) {
-          fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${fotoStr}`);
+        // C. Fallback caso o sq_candidato seja diferente do campo foto
+        if (cand.sq_candidato && cand.sq_candidato !== fotoStr) {
+          const sqBase = String(cand.sq_candidato).trim();
+          extensoesPossiveis.forEach(ext => {
+            if (ano >= 2022) {
+              fallbackQueue.push(`https://fotos.centraleti.com.br/fotos/${ano}/${uf}/${sqBase}.${ext}`);
+            }
+            fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${sqBase}.${ext}`);
+          });
         }
-        fallbackQueue.push(`https://f.centraleti.com.br/f/${ano}/${uf}/${fotoStr}`);
       }
     });
 
+    // Remove URLs duplicadas e adiciona a imagem genérica ao final do fallback
     const uniqueQueue = Array.from(new Set(fallbackQueue));
-    uniqueQueue.push('/avatar.png'); // Fallback final
+    uniqueQueue.push('/avatar.png');
 
     setUrls(uniqueQueue);
     setCurrentIndex(0);

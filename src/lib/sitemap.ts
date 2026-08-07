@@ -55,7 +55,7 @@ export async function getSitemapCandidateCount(): Promise<number> {
 /**
  * Retorna uma fatia (página) de IDs de candidatos para montar sitemaps paginados
  */
-export async function getCandidateIdsForPage(page: number): Promise<string[]> {
+export async function getSitemapCandidatePage(page: number) {
   const allIds = await getAllCandidateIdsFromR2();
   const start = page * SITEMAP_PAGE_SIZE;
   const end = start + SITEMAP_PAGE_SIZE;

@@ -56,12 +56,16 @@ export async function GET(_request: Request, { params }: SitemapRouteProps) {
         return new Response('Sitemap não encontrado.', { status: 404 });
       }
 
-      entries = candidates.flatMap((candidate) => {
+      entries = candidates.flatMap((candidate: any) => {
+        // Trata o caso em que 'candidate' pode ser string (ID) ou objeto
+        const candidateId = typeof candidate === 'string' ? candidate : candidate.id;
+        const candidateUf = typeof candidate === 'object' ? candidate?.uf : undefined;
+
         const rankingUrl = new URL('/ranking', siteUrl);
-        if (candidate.uf) {
-          rankingUrl.searchParams.set('uf', candidate.uf);
+        if (candidateUf) {
+          rankingUrl.searchParams.set('uf', candidateUf);
         }
-        rankingUrl.searchParams.set('highlight', candidate.id);
+        rankingUrl.searchParams.set('highlight', candidateId);
 
         return [
           {
@@ -70,7 +74,7 @@ export async function GET(_request: Request, { params }: SitemapRouteProps) {
             priority: 0.7,
           },
           {
-            url: `${siteUrl}/candidato/${encodeURIComponent(candidate.id)}`,
+            url: `${siteUrl}/candidato/${encodeURIComponent(candidateId)}`,
             changeFrequency: 'weekly' as const,
             priority: 0.6,
           },

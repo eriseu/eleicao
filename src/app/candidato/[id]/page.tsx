@@ -66,8 +66,8 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           return;
         }
 
-        // 4️⃣ Prepara e ordena o histórico de candidaturas se houver
-        const historico = candidatoEncontradoR2.candidaturas || [];
+        // 4️⃣ Prepara e ordena o histórico de candidaturas se houver (Cast de tipo para evitar erro no TypeScript)
+        const historico = (candidatoEncontradoR2 as any).candidaturas || [];
         const historicoOrdenado = [...historico].sort(
           (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
         );
@@ -95,6 +95,9 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
   if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
   if (!candidato) return <p className="text-center mt-12 text-red-400">Candidato não encontrado.</p>;
+
+  // Busca o ano da candidatura mais recente ou do objeto estático
+  const anoReferencia = historicoCandidaturas[0]?.ano_eleicao || (candidato as any).ano_eleicao || '2024';
 
   return (
     <main className="max-w-md mx-auto px-4 py-6 text-slate-100">
@@ -147,7 +150,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
           <div className="flex justify-between border-b border-white/5 pb-1.5">
             <span className="text-slate-400">Ano de Referência:</span>
-            <span className="font-mono text-white">{candidato.ano_eleicao || '2024'}</span>
+            <span className="font-mono text-white">{anoReferencia}</span>
           </div>
 
           {candidato.titulo_eleitoral && (

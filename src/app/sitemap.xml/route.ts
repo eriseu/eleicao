@@ -1,5 +1,6 @@
 import { getSiteUrl } from '@/lib/seo';
-import { getSitemapCandidateCount, xmlEscape } from '@/lib/sitemap';
+import { getSitemapCandidateCount, xmlEscape, SITEMAP_PAGE_SIZE } from '@/lib/sitemap';
+
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -8,7 +9,8 @@ export async function GET() {
   try {
     // Obtém o total de candidatos somando o tamanho de todos os arquivos JSON do R2
     const candidateCount = await getSitemapCandidateCount();
-    const pageCount = Math.ceil(candidateCount / SITEMAP_PAGE_SIZE) || 1;
+    const pageSize = SITEMAP_PAGE_SIZE || 50000; // Fallback de segurança se necessário
+    const pageCount = Math.ceil(candidateCount / pageSize) || 1;
 
     const sitemaps = [
       `${siteUrl}/sitemap/static.xml`,

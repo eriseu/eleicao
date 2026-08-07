@@ -176,11 +176,12 @@ export default function DueloClient() {
       });
     };
 
-  // Lógica de carregamento integrada com VPS e Supabase
+// Lógica de carregamento direto do R2 (JSON estático por UF)
   const loadData = useCallback(async () => {
     setLoadingCandidates(true);
     try {
       if (isSharedDuel) {
+        // Se for duelo compartilhado, busca os perfis específicos no Supabase
         const { data: perfisData, error } = await supabase
           .from('perfis_candidatos')
           .select('*')
@@ -202,53 +203,27 @@ export default function DueloClient() {
         return;
       }
 
-      const cargos = getCargosPorEscopo();
-      const queryParams = new URLSearchParams();
-      queryParams.append('uf', selectedUf);
-      cargos.forEach(cargo => queryParams.append('cargos', cargo));
-      if (selectedMunicipio) {
-        queryParams.append('municipio', selectedMunicipio);
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+      // 🚀 BUSCA DIRETA DO R2 (JSON da UF selecionada)
+      const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
+      const response = await fetch(r2Url);
+      
       if (!response.ok) {
+        console.error(`Falha ao carregar JSON da UF ${selectedUf} do R2`);
         setCandidates([]);
         setLoadingCandidates(false);
         return;
       }
 
-      const perfilIdsVps: string[] = await response.json();
-      if (!perfilIdsVps || perfilIdsVps.length === 0) {
-        setCandidates([]);
-        setLoadingCandidates(false);
-        return;
-      }
+      const candidatosDoR2: Candidato[] = await response.json();
+      setCandidates(candidatosDoR2);
 
-      const idsAmostra = perfilIdsVps.slice(0, 300); // Amostra robusta para alimentar o autocompletar e o duelo
-      const { data: perfisData, error } = await supabase
-        .from('perfis_candidatos')
-        .select('*')
-        .in('id', idsAmostra);
-
-      if (error || !perfisData || perfisData.length === 0) {
-        setCandidates([]);
-        setLoadingCandidates(false);
-        return;
-      }
-
-      const perfilIds = perfisData.map((p: any) => p.id);
-      const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
-
-      const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
-      setCandidates(mappedDataFinal);
     } catch (error) {
-      console.error('Erro ao buscar candidatos para o duelo:', error);
+      console.error('Erro ao buscar candidatos do R2 para o duelo:', error);
       setCandidates([]);
     } finally {
       setLoadingCandidates(false);
     }
-  }, [isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo, hasValidSharedUf, sharedC1Id, sharedC2Id]);
-
+  }, [isSharedDuel, selectedUf, hasValidSharedUf, sharedC1Id, sharedC2Id]);
   useEffect(() => {
     void loadData();
   }, [loadData]);

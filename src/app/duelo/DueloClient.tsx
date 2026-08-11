@@ -326,9 +326,15 @@ export default function DueloClient() {
   const getRankingUrl = (candidate: Candidato) => {
       const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
       const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
-      
-      // Determina o escopo com base no estado/município selecionados no momento do duelo
-      const escopo = selectedMunicipio ? 'municipal' : (selectedUf === 'BR' ? 'nacional' : 'estadual');
+      const cargo = (candidate.ultima_candidatura?.cargo || candidate.cargo || '').toUpperCase().trim();
+
+      // Verifica se o cargo é estritamente municipal (Prefeito, Vice-Prefeito, Vereador)
+      const isCargoMunicipal = ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'].includes(cargo);
+
+      // Se for um candidato municipal e possuir município definido, força o escopo 'municipal'
+      const escopo = (isCargoMunicipal && municipio)
+        ? 'municipal'
+        : (selectedMunicipio ? 'municipal' : (selectedUf === 'BR' ? 'nacional' : 'estadual'));
 
       const params = new URLSearchParams({ 
         uf, 
@@ -336,7 +342,8 @@ export default function DueloClient() {
         highlight: candidate.id 
       });
 
-      if (selectedMunicipio && municipio) {
+      // Anexa o município na URL sempre que for um escopo municipal ou houver município válido
+      if ((escopo === 'municipal' || selectedMunicipio) && municipio) {
         params.set('municipio', municipio);
       }
 

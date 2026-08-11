@@ -67,8 +67,8 @@ function RankingContent() {
   // Sincroniza estado com parâmetros da URL sempre que mudarem
   useEffect(() => {
     const ufParam = searchParams.get('uf')?.toUpperCase();
-    if (ufParam && AVAILABLE_UFS.includes(ufParam)) {
-      setSelectedUf(ufParam);
+    if (ufParam && (AVAILABLE_UFS as readonly string[]).includes(ufParam)) {
+      setSelectedUf(ufParam as any); // ou `ufParam as typeof AVAILABLE_UFS[number]`
     }
     const munParam = searchParams.get('municipio');
     if (munParam !== null) {

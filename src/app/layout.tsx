@@ -53,15 +53,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
+          {/* Google AdSense */}
+          <script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566"
+            crossOrigin="anonymous"
+          />
       <head />
       <body className={inter.className}>
-        {/* Google AdSense */}
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
         {/* Google Analytics */}
         <Script
           strategy="afterInteractive"

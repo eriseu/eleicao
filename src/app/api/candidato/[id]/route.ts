@@ -12,7 +12,7 @@ const pool = new Pool({
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
 

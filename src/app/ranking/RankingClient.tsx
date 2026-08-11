@@ -56,10 +56,25 @@ function RankingContent() {
   const [municipios, setMunicipios] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState(initialUf);
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
-  const [highlightedId, setHighlightedId] = useState(searchParams.get('highlight') || '');
+  
+  // Atualiza o highlight dinamicamente a partir dos searchParams
+  const highlightedId = searchParams.get('highlight') || '';
+  
   const [loading, setLoading] = useState(false);
   const [shareFeedback, setShareFeedback] = useState('');
   const [hasMore, setHasMore] = useState(true);
+
+  // Sincroniza estado com parâmetros da URL sempre que mudarem
+  useEffect(() => {
+    const ufParam = searchParams.get('uf')?.toUpperCase();
+    if (ufParam && AVAILABLE_UFS.includes(ufParam)) {
+      setSelectedUf(ufParam);
+    }
+    const munParam = searchParams.get('municipio');
+    if (munParam !== null) {
+      setSelectedMunicipio(munParam);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (selectedUf === 'BR') {
@@ -112,20 +127,16 @@ function RankingContent() {
       const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
       if (candsDoPerfil.length === 0) return [];
 
-      // Ordena todo o histórico do mais recente ao mais antigo
       const sortedCands = [...candsDoPerfil].sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
 
-      // 🎯 Busca a candidatura específica que corresponde ao cargo do filtro selecionado
       const candidaturaCorrespondente = sortedCands.find((c: any) => 
         cargosUpper.includes((c.cargo || '').toUpperCase().trim()) &&
         (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
         (!selectedMunicipio || (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim())
       );
 
-      // Se por algum motivo não encontrar específica, utiliza a mais recente
       const candidaturaPrincipal = candidaturaCorrespondente || sortedCands[0];
 
-      // Busca por foto no histórico
       const candidaturaComFoto = sortedCands.find((c: any) => {
         const foto = c.foto || c.sq_candidato;
         if (!foto) return false;
@@ -249,21 +260,29 @@ function RankingContent() {
     void loadRanking();
   }, [isMounted, highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
+  // Rola suavemente até o elemento destacado
   useEffect(() => {
     if (!highlightedId || loading) return;
-    document.getElementById(`ranking-${highlightedId}`)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-    });
+    const timer = setTimeout(() => {
+      document.getElementById(`ranking-${highlightedId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 150);
+
+    return () => clearTimeout(timer);
   }, [highlightedId, loading, ranking]);
 
+  // Preserva os parâmetros da URL (incluindo highlight, se houver)
   useEffect(() => {
     if (!isMounted) return;
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
+    if (highlightedId) params.set('highlight', highlightedId);
+    
     router.replace(`/ranking?${params.toString()}`);
-  }, [isMounted, selectedUf, selectedMunicipio, router]);
+  }, [isMounted, selectedUf, selectedMunicipio, highlightedId, router]);
 
   useEffect(() => {
     setPage(0);
@@ -327,7 +346,6 @@ function RankingContent() {
                 onChange={(event) => {
                   setSelectedUf(event.target.value);
                   setSelectedMunicipio('');
-                  setHighlightedId('');
                   setPage(0);
                 }}
               >
@@ -344,7 +362,6 @@ function RankingContent() {
                 value={selectedMunicipio}
                 onChange={(event) => {
                   setSelectedMunicipio(event.target.value);
-                  setHighlightedId('');
                   setPage(0);
                 }}
                 disabled={selectedUf === 'BR'}
@@ -365,7 +382,6 @@ function RankingContent() {
                 onClick={() => {
                   setSelectedUf('BR');
                   setSelectedMunicipio('');
-                  setHighlightedId('');
                   setPage(0);
                 }}
                 disabled={selectedUf === 'BR' && selectedMunicipio === ''}

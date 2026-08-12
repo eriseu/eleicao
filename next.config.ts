@@ -1,11 +1,23 @@
 import type { NextConfig } from "next";
 
+const cspHeader = `
+  default-src 'self' https: data: blob:;
+  script-src 'self' 'unsafe-eval' 'unsafe-inline' https: https://*.google.com https://*.google.com.br https://*.googlesyndication.com;
+  style-src 'self' 'unsafe-inline' https:;
+  img-src 'self' https: data: blob:;
+  font-src 'self' https: data:;
+  connect-src 'self' https: wss: https://api.centraleti.com.br;
+  frame-src 'self' https:;
+  object-src 'none';
+  base-uri 'self';
+`;
+
 const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
         source: "/api/vps/:path*",
-        destination: "https://api.centraleti.br/api/:path*",
+        destination: "https://api.centraleti.com.br/api/:path*",
       },
     ];
   },
@@ -16,7 +28,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-eval' 'unsafe-inline' https:; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https: data:; frame-src 'self' https:;"
+            value: cspHeader.replace(/\s{2,}/g, " ").trim(),
           },
         ],
       },

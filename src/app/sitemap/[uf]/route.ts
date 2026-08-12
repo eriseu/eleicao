@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCandidateIdsForUf, xmlEscape } from '@/lib/sitemap';
+import { getSitemapPageCountForUf, xmlEscape } from '@/lib/sitemap';
 import { getSiteUrl } from '@/lib/seo';
 
 export async function GET(
@@ -12,27 +12,28 @@ export async function GET(
   const siteUrl = getSiteUrl();
 
   try {
-    // Tenta buscar os IDs
-    const ids = await getCandidateIdsForUf(ufClean);
+    // Calcula o total de páginas com base no tamanho SITEMAP_PAGE_SIZE
+    const pageCount = await getSitemapPageCountForUf(ufClean);
 
-    if (!ids || ids.length === 0) {
-      console.warn(`[SITEMAP WARNING] O arquivo JSON do R2 para '${ufClean}' existe, mas veio vazio (0 candidatos).`);
+    if (pageCount === 0) {
       return new NextResponse(`Sitemap sem candidatos cadastrados para a UF: ${ufClean}`, {
         status: 404,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
     }
 
-    // Gera as tags do XML
-    const urlEntries = ids.map((id) => {
-      const loc = xmlEscape(`${siteUrl}/candidato/${id}`);
-      return `  <url>\n    <loc>${loc}</loc>\n  </url>`;
+    // Se tiver apenas 1 página, gera os links diretamente no arquivo
+    // Se tiver mais de 1, gera o Sitemap Index paginado (/sitemap/mt/1.xml, /sitemap/mt/2.xml...)
+    const sitemapEntries = Array.from({ length: pageCount }, (_, i) => {
+      const pageNum = i + 1;
+      const loc = xmlEscape(`${siteUrl}/sitemap/${ufClean.toLowerCase()}/${pageNum}.xml`);
+      return `  <sitemap>\n    <loc>${loc}</loc>\n  </sitemap>`;
     });
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urlEntries.join('\n')}
-</urlset>`;
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapEntries.join('\n')}
+</sitemapindex>`;
 
     return new NextResponse(xml, {
       headers: {
@@ -42,10 +43,7 @@ ${urlEntries.join('\n')}
     });
 
   } catch (error: any) {
-    // Printa no console da Vercel/Terminal
-    console.error(`[SITEMAP ROUTE ERROR] Falha ao gerar sitemap para UF '${ufClean}':`, error);
-
-    // Retorna status 500 exibindo a causa real na tela do navegador
+    console.error(`[SITEMAP ROUTE ERROR] UF '${ufClean}':`, error);
     return new NextResponse(`Erro ao carregar dados do R2 (${ufClean}): ${error?.message || error}`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },

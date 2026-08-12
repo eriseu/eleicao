@@ -44,36 +44,33 @@ function normalizeCandidateIds(items: unknown[]): string[] {
 }
 
 export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
-  try {
-    const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
-    const res = await fetch(url, {
-      headers: {
-        'Origin': 'https://politica.centraleti.com.br',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-      },
-      next: {
-        revalidate: 86400,
-        tags: ['candidates-list'],
-      },
-    });
+  const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
 
-    if (!res.ok) {
-      console.error(`[SITEMAP ERROR] HTTP ${res.status} ao carregar ${url}`);
-      return [];
-    }
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+    },
+    next: {
+      revalidate: 86400,
+      tags: ['candidates-list'],
+    },
+  });
 
-    const data = await res.json();
-    if (!Array.isArray(data)) {
-      console.error(`[SITEMAP ERROR] JSON retornado não é um Array em ${url}`);
-      return [];
-    }
-
-    return normalizeCandidateIds(data);
-  } catch (error) {
-    console.error(`[SITEMAP EXCEPTION] Falha em getCandidateIdsForUf(${uf}):`, error);
-    return [];
+  if (!res.ok) {
+    const errorMsg = `HTTP ${res.status} ${res.statusText} ao buscar ${url}`;
+    console.error(`[SITEMAP FETCH ERROR] ${errorMsg}`);
+    throw new Error(errorMsg); // Lança para o catch da rota pegar
   }
+
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    const errorMsg = `JSON retornado em ${url} não é uma lista/array válida.`;
+    console.error(`[SITEMAP PARSE ERROR] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+
+  return normalizeCandidateIds(data);
 }
 
 export const getAllCandidateIdsFromR2 = cache(async (): Promise<string[]> => {

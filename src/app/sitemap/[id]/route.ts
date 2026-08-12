@@ -40,6 +40,8 @@ ${urlEntries.join('\n')}
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
       'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=86400',
+      'Origin': 'https://politica.centraleti.com.br',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     },
   });
 }

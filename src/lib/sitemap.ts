@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { AVAILABLE_UFS } from '@/constants/elections';
 
 export const SITEMAP_PAGE_SIZE = 10000;
@@ -12,7 +13,17 @@ export function xmlEscape(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
-const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos-ids';
+// Inicializa o cliente do R2 de forma resiliente
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT, // Ex: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+  },
+});
+
+const BUCKET_NAME = process.env.R2_BUCKET || 'eleicao';
 
 function normalizeCandidateIds(items: unknown[]): string[] {
   if (!Array.isArray(items)) return [];
@@ -44,35 +55,34 @@ function normalizeCandidateIds(items: unknown[]): string[] {
 }
 
 export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
-  const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
+  const objectKey = `candidatos-ids/${uf.toUpperCase()}.json`;
 
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Cache-Control': 'no-cache',
-    },
-    next: {
-      revalidate: 86400,
-      tags: ['candidates-list'],
-    },
-  });
+  try {
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: objectKey,
+    });
 
-  if (!res.ok) {
-    const errorMsg = `HTTP ${res.status} ${res.statusText} ao buscar ${url}`;
-    console.error(`[SITEMAP FETCH ERROR] ${errorMsg}`);
+    const response = await r2.send(command);
+    const bodyContents = await response.Body?.transformToString();
+
+    if (!bodyContents) {
+      throw new Error(`O arquivo '${objectKey}' veio vazio do R2.`);
+    }
+
+    const data = JSON.parse(bodyContents);
+
+    if (!Array.isArray(data)) {
+      throw new Error(`JSON retornado no arquivo '${objectKey}' não é uma lista/array válida.`);
+    }
+
+    return normalizeCandidateIds(data);
+
+  } catch (error: any) {
+    const errorMsg = `Erro ao ler '${objectKey}' via R2 SDK: ${error?.message || error}`;
+    console.error(`[SITEMAP SDK ERROR] ${errorMsg}`);
     throw new Error(errorMsg);
   }
-
-  const data = await res.json();
-  if (!Array.isArray(data)) {
-    const errorMsg = `JSON retornado em ${url} não é uma lista/array válida.`;
-    console.error(`[SITEMAP PARSE ERROR] ${errorMsg}`);
-    throw new Error(errorMsg);
-  }
-
-  return normalizeCandidateIds(data);
 }
 
 export const getAllCandidateIdsFromR2 = cache(async (): Promise<string[]> => {

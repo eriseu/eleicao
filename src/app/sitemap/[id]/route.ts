@@ -29,9 +29,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const resolvedParams = await params;
+  
+  // Remove a extensão .xml (insensível a maiúsculas)
   const rawId = resolvedParams.id.replace(/\.xml$/i, '').toUpperCase();
   const siteUrl = getSiteUrl();
 
+  // Tratamento para static.xml
   if (rawId === 'STATIC') {
     const staticEntries: SitemapEntry[] = [
       { url: siteUrl, changeFrequency: 'weekly', priority: 1.0 },
@@ -52,18 +55,24 @@ export async function GET(
     const ufCode = match?.[1]?.toUpperCase() ?? rawId;
     const pageNumber = match && match[2] ? Number(match[2]) - 1 : 0;
 
-    if (!AVAILABLE_UFS.some((uf) => uf === ufCode)) {
-      return new NextResponse('Sitemap não encontrado.', { status: 404 });
+    // Comparação insensível a maiúsculas/minúsculas com a lista de UFs
+    const isUfValid = AVAILABLE_UFS.some(
+      (uf) => uf.toUpperCase() === ufCode
+    );
+
+    if (!isUfValid) {
+      return new NextResponse('Sitemap não encontrado (UF inválida).', { status: 404 });
     }
 
     const pageStart = pageNumber * SITEMAP_PAGE_SIZE;
     const pageEnd = pageStart + SITEMAP_PAGE_SIZE;
 
+    // Busca os candidatos do R2 para a UF (ex: BR.json)
     const ids = await getCandidateIdsForUf(ufCode);
     const pageIds = [...new Set(ids)].slice(pageStart, pageEnd);
 
     if (!pageIds.length) {
-      return new NextResponse('Sitemap não encontrado.', { status: 404 });
+      return new NextResponse('Sitemap vazio para esta UF.', { status: 404 });
     }
 
     const entries: SitemapEntry[] = pageIds.map((candidateId) => ({
@@ -78,7 +87,7 @@ export async function GET(
         'Cache-Control': 'public, max-age=86400, s-maxage=86400',
       },
     });
-  } catch {
+  } catch (err) {
     return new NextResponse('Erro ao processar sitemap.', { status: 500 });
   }
 }

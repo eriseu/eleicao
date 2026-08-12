@@ -15,24 +15,33 @@ export function xmlEscape(str: string): string {
 const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
 
 function normalizeCandidateIds(items: unknown[]): string[] {
-  return Array.from(
-    new Set(
-      items
-        .map((item) => {
-          if (typeof item === 'string') return item.trim();
-          if (item && typeof item === 'object' && 'id' in item && typeof (item as { id?: unknown }).id === 'string') {
-            return (item as { id: string }).id.trim();
-          }
-          return '';
-        })
-        .filter((id): id is string => Boolean(id))
-    )
-  );
+  if (!Array.isArray(items)) return [];
+
+  const ids = items
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+
+      const candidate = item as Record<string, unknown>;
+
+      // Tenta pegar pelo 'id' (UUID) ou pelo 'sq_candidato'
+      if (typeof candidate.id === 'string' && candidate.id.trim()) {
+        return candidate.id.trim();
+      }
+
+      if (candidate.sq_candidato) {
+        return String(candidate.sq_candidato).trim();
+      }
+
+      return null;
+    })
+    .filter((id): id is string => Boolean(id));
+
+  return Array.from(new Set(ids));
 }
 
 export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
-  const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
   try {
+    const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
     const res = await fetch(url, {
       next: {
         revalidate: 86400,
@@ -41,19 +50,20 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
     });
 
     if (!res.ok) {
-      console.error(`[SITEMAP FETCH ERROR] ${url} retornou status ${res.status}`);
+      console.error(`[SITEMAP] HTTP Error ${res.status} ao buscar ${url}`);
       return [];
     }
 
     const data = await res.json();
     if (!Array.isArray(data)) {
-      console.error(`[SITEMAP DATA ERROR] O conteúdo de ${url} não é um Array`);
+      console.error(`[SITEMAP] Resposta inválida (não é Array) em ${url}`);
       return [];
     }
 
-    return normalizeCandidateIds(data);
+    const normalized = normalizeCandidateIds(data);
+    return normalized;
   } catch (error) {
-    console.error(`[SITEMAP EXCEPTION] Falha ao buscar ${url}:`, error);
+    console.error(`[SITEMAP EXCEPTION] Falha em getCandidateIdsForUf(${uf}):`, error);
     return [];
   }
 }
@@ -70,9 +80,6 @@ export const getAllCandidateIdsFromR2 = cache(async (): Promise<string[]> => {
   }
 });
 
-/**
- * Retorna o total de candidatos únicos cadastrados nos JSONs
- */
 export async function getSitemapCandidateCount(): Promise<number> {
   const ids = await getAllCandidateIdsFromR2();
   return ids.length;
@@ -83,9 +90,6 @@ export async function getSitemapPageCountForUf(uf: string): Promise<number> {
   return Math.max(0, Math.ceil(ids.length / SITEMAP_PAGE_SIZE));
 }
 
-/**
- * Retorna uma fatia (página) de IDs de candidatos para montar sitemaps paginados
- */
 export async function getSitemapCandidatePage(page: number, uf?: string) {
   const allIds = uf ? await getCandidateIdsForUf(uf) : await getAllCandidateIdsFromR2();
   const start = page * SITEMAP_PAGE_SIZE;

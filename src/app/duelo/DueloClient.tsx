@@ -12,7 +12,7 @@ const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
   estadual: [
     'DEPUTADO ESTADUAL',
-    'DEPUTADO DISTRITAL', // 👈 Adicionado para DF
+    'DEPUTADO DISTRITAL',
     'DEPUTADO FEDERAL',
     'GOVERNADOR',
     'VICE-GOVERNADOR',
@@ -170,6 +170,31 @@ export default function DueloClient() {
     });
   };
 
+  const fetchPerfisEmLotes = async (ids: string[]) => {
+    if (ids.length === 0) return [];
+    
+    // Divide os IDs em lotes pequenos de até 15 para não quebrar limites de URL
+    const CHUNK_SIZE = 15;
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      chunks.push(ids.slice(i, i + CHUNK_SIZE));
+    }
+
+    const results = await Promise.all(
+      chunks.map(async (chunk) => {
+        try {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${chunk.join(',')}`);
+          if (!res.ok) return [];
+          return await res.json();
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    return results.flat();
+  };
+
   const getCandidateLabel = (candidate: Candidato) => {
     const nome = candidate.ultima_candidatura?.nome_urna || candidate.nome_urna || candidate.nome_completo;
     const partido = candidate.ultima_candidatura?.partido || candidate.partido;
@@ -219,18 +244,11 @@ export default function DueloClient() {
     setC2(shuffled[1]);
   }, [filteredCandidates]);
 
-  // 🔄 CARREGAMENTO CORRIGIDO E HÍBRIDO DA VPS
   const loadData = useCallback(async () => {
     setLoadingCandidates(true);
     try {
       if (isSharedDuel) {
-        const resPerfis = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${sharedC1Id},${sharedC2Id}`);
-        if (!resPerfis.ok) {
-          setCandidates([]);
-          setLoadingCandidates(false);
-          return;
-        }
-        const perfisData = await resPerfis.json();
+        const perfisData = await fetchPerfisEmLotes([sharedC1Id!, sharedC2Id!]);
         const candidaturas = (await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!])) || [];
         const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
         
@@ -245,7 +263,6 @@ export default function DueloClient() {
         return;
       }
 
-      // Busca IDs dos candidatos filtrados da VPS
       const cargos = getCargosPorEscopo();
       const queryParams = new URLSearchParams();
       queryParams.append('uf', selectedUf);
@@ -272,23 +289,32 @@ export default function DueloClient() {
         return;
       }
 
-      // Garante extração de IDs (suporta se retornar array de IDs ou array de Objetos)
-      const perfilIdsVps: string[] = dataVps.map((item: any) => typeof item === 'string' ? item : item.id);
+      // Se a resposta da VPS já for um array de objetos completos dos perfis:
+      if (typeof dataVps[0] === 'object' && dataVps[0] !== null && dataVps[0].id) {
+        const perfilIds = dataVps.map((p: any) => p.id);
+        const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
+        const mappedDataFinal = processCandidaturas(dataVps, candidaturas as any[]);
+        setCandidates(mappedDataFinal);
 
-      const idsEmbaralhados = [...perfilIdsVps].sort(() => Math.random() - 0.5);
-      const idsAmostra = idsEmbaralhados.slice(0, 300);
-
-      // Busca os objetos completos dos perfis via VPS
-      const resPerfis = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${idsAmostra.join(',')}`);
-      if (!resPerfis.ok) {
-        setCandidates([]);
-        setC1(null);
-        setC2(null);
+        if (mappedDataFinal.length >= 2) {
+          const shuffled = [...mappedDataFinal].sort(() => Math.random() - 0.5);
+          setC1(shuffled[0]);
+          setC2(shuffled[1]);
+        } else {
+          setC1(mappedDataFinal[0] || null);
+          setC2(mappedDataFinal[1] || null);
+        }
         setLoadingCandidates(false);
         return;
       }
-      const perfisData = await resPerfis.json();
 
+      // Se a VPS responder apenas com IDs de perfil:
+      const perfilIdsVps: string[] = dataVps.map((item: any) => typeof item === 'string' ? item : item.id);
+      const idsEmbaralhados = [...perfilIdsVps].sort(() => Math.random() - 0.5);
+      // Pega no máximo 30 candidatos para agilizar o carregamento
+      const idsAmostra = idsEmbaralhados.slice(0, 30);
+
+      const perfisData = await fetchPerfisEmLotes(idsAmostra);
       const perfilIds = perfisData.map((p: any) => p.id);
       const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 

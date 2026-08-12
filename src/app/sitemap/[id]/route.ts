@@ -30,9 +30,15 @@ function createXml(entries: SitemapEntry[]) {
   ].join('\n');
 }
 
-export async function GET(_request: Request, { params }: SitemapRouteProps) {
-  const { id: fileName } = await params;
-  if (!fileName.endsWith('.xml')) {
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  // Limpa o ".xml" caso venha na URL (ex: "0.xml" vira "0")
+  const idClean = params.id.replace('.xml', '');
+  const pageId = parseInt(idClean, 10);
+
+  if (isNaN(pageId)) {
     return new Response('Sitemap não encontrado.', { status: 404 });
   }
 

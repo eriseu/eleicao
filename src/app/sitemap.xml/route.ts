@@ -12,7 +12,13 @@ export async function GET() {
     return `  <sitemap>\n    <loc>${loc}</loc>\n  </sitemap>`;
   });
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <sitemap>\n    <loc>${siteUrl}/sitemap/static.xml</loc>\n  </sitemap>\n${ufEntries.join('\n')}\n</sitemapindex>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>${siteUrl}/sitemap/static.xml</loc>
+  </sitemap>
+${ufEntries.join('\n')}
+</sitemapindex>`;
 
   return new NextResponse(xml, {
     headers: {

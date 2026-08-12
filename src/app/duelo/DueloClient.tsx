@@ -355,34 +355,36 @@ export default function DueloClient() {
     setSelectedMunicipio('');
   };
 
-  const getRankingUrl = (candidate: Candidato) => {
-    if (selectedUf === 'BR') {
-      const params = new URLSearchParams({
-        uf: 'BR',
-        escopo: 'nacional',
-        highlight: candidate.id,
-      });
-      return `/ranking?${params.toString()}`;
-    }
+    const getRankingUrl = (candidate: Candidato) => {
+      if (selectedUf === 'BR') {
+        const params = new URLSearchParams({
+          uf: 'BR',
+          escopo: 'nacional',
+          highlight: candidate.id,
+        });
+        return `/ranking?${params.toString()}`;
+      }
 
-    if (selectedMunicipio) {
+      if (selectedMunicipio) {
+        const params = new URLSearchParams({
+          uf: selectedUf,
+          municipio: selectedMunicipio,
+          escopo: 'municipal',
+          highlight: candidate.id,
+        });
+        return `/ranking?${params.toString()}`;
+      }
+
+      // 💡 AJUSTE AQUI: Para garantir que qualquer candidato de MT (federal, estadual ou municipal)
+      // seja renderizado e possa receber o highlight
       const params = new URLSearchParams({
         uf: selectedUf,
-        municipio: selectedMunicipio,
-        escopo: 'municipal',
+        escopo: 'todos', // Altere de 'estadual' para 'todos'
         highlight: candidate.id,
       });
+
       return `/ranking?${params.toString()}`;
-    }
-
-    const params = new URLSearchParams({
-      uf: selectedUf,
-      escopo: 'estadual',
-      highlight: candidate.id,
-    });
-
-    return `/ranking?${params.toString()}`;
-  };
+    };
 
   const escolher = async (escolhido: Candidato, outro: Candidato) => {
     if (submitting || !isSharedDuel) return;

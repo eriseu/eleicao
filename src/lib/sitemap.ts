@@ -13,10 +13,10 @@ export function xmlEscape(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
-// Inicializa o cliente do R2 de forma resiliente
+// Inicializa o cliente do R2 com autenticação de chaves (Zero CORS / Zero WAF)
 const r2 = new S3Client({
   region: 'auto',
-  endpoint: process.env.R2_ENDPOINT, // Ex: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+  endpoint: process.env.R2_ENDPOINT,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
@@ -30,13 +30,8 @@ function normalizeCandidateIds(items: unknown[]): string[] {
 
   const ids = items
     .map((item) => {
-      // Caso 1: Item já é uma string simples ("00156063-27ab-...")
       if (typeof item === 'string') return item.trim();
-
-      // Caso 2: Item é um número
       if (typeof item === 'number') return String(item).trim();
-
-      // Caso 3: Item é um objeto ({ id: "...", sq_candidato: ... })
       if (item && typeof item === 'object') {
         const candidate = item as Record<string, unknown>;
         if (typeof candidate.id === 'string' && candidate.id.trim()) {
@@ -46,7 +41,6 @@ function normalizeCandidateIds(items: unknown[]): string[] {
           return String(candidate.sq_candidato).trim();
         }
       }
-
       return null;
     })
     .filter((id): id is string => Boolean(id));
@@ -73,11 +67,10 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
     const data = JSON.parse(bodyContents);
 
     if (!Array.isArray(data)) {
-      throw new Error(`JSON retornado no arquivo '${objectKey}' não é uma lista/array válida.`);
+      throw new Error(`JSON retornado em '${objectKey}' não é uma lista válida.`);
     }
 
     return normalizeCandidateIds(data);
-
   } catch (error: any) {
     const errorMsg = `Erro ao ler '${objectKey}' via R2 SDK: ${error?.message || error}`;
     console.error(`[SITEMAP SDK ERROR] ${errorMsg}`);

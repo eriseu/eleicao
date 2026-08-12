@@ -107,68 +107,93 @@ export default function DueloClient() {
     return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-  const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
-    const perfisIncluidos = new Set<string>();
-    return perfis.flatMap((perfil) => {
-      if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) return [];
+    const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
+      const perfisIncluidos = new Set<string>();
 
-      const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
-      if (candsDoPerfil.length === 0) return [];
+      return perfis.flatMap((perfil) => {
+        if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) return [];
 
-      const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
-      const candidaturaMaisRecente = sortedCands[0];
+        const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+        if (candsDoPerfil.length === 0) return [];
 
-      const candidaturaComFoto = sortedCands.find((c: any) => {
-        const foto = c.foto || c.sq_candidato;
-        if (!foto) return false;
-        const fotoStr = String(foto).trim();
-        return fotoStr !== '' && !fotoStr.includes('avatar.png');
-      });
+        // Ordena do mais recente para o mais antigo
+        const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
 
-      const fotoFinal = candidaturaComFoto 
-        ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
-        : candidaturaMaisRecente.foto;
+        // 1. Determina quais cargos são válidos para o filtro ATUAL da tela
+        const cargosPermitidos = getCargosPorEscopo();
 
-      if (!fotoFinal || String(fotoFinal).trim() === '' || String(fotoFinal).includes('avatar.png')) {
-        return [];
-      }
+        // 2. Busca a candidatura mais recente que COMPATIBILIZA com o escopo atual
+        const candidaturaDoEscopo = sortedCands.find((c: any) => {
+          const cargoStr = (c.cargo || '').toUpperCase().trim();
+          const ufStr = (c.uf || perfil.uf || '').toUpperCase().trim();
+          const munStr = (c.municipio || '').toUpperCase().trim();
 
-      perfisIncluidos.add(perfil.id);
+          // Se for escopo BR (Nacional)
+          if (selectedUf === 'BR') {
+            return cargosPermitidos.includes(cargoStr);
+          }
 
-      const candidaturaEstadualOuNacional = sortedCands.find((c: any) =>
-        CARGOS_ESTADUAIS_NACIONAIS.includes((c.cargo || '').toUpperCase().trim())
-      );
+          // Se for escopo Municipal
+          if (selectedMunicipio) {
+            return ufStr === selectedUf.toUpperCase() && 
+                   munStr === selectedMunicipio.toUpperCase() && 
+                   cargosPermitidos.includes(cargoStr);
+          }
 
-      const candidaturaReferencia = candidaturaEstadualOuNacional || candidaturaMaisRecente;
-      const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaMaisRecente.cargo || '').toUpperCase().trim());
+          // Se for escopo Estadual
+          return ufStr === selectedUf.toUpperCase() && cargosPermitidos.includes(cargoStr);
+        });
 
-      return [{
-        id: perfil.id,
-        nome_completo: perfil.nome_completo,
-        cpf: perfil.cpf,
-        titulo_eleitoral: perfil.titulo_eleitoral,
-        created_at: perfil.created_at,
-        elo_score: perfil.elo_score ?? 1200,
-        matches_count: perfil.matches_count ?? 0,
-        nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
-        partido: candidaturaMaisRecente.partido || 'S/P',
-        cargo: candidaturaMaisRecente.cargo,
-        uf: isNacional ? 'BR' : (candidaturaReferencia.uf || perfil.uf),
-        municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
-          ? '' 
-          : candidaturaReferencia.municipio,
-        foto: fotoFinal,
-        candidaturas: sortedCands,
-        ultima_candidatura: {
-          ...candidaturaMaisRecente,
-          foto: fotoFinal,
-          perfil_id: perfil.id,
+        // Se o candidato não tiver NENHUMA candidatura condizente com o filtro atual, desconsidera
+        const candidaturaAlvo = candidaturaDoEscopo || sortedCands[0];
+
+        // Busca foto válida
+        const candidaturaComFoto = sortedCands.find((c: any) => {
+          const foto = c.foto || c.sq_candidato;
+          if (!foto) return false;
+          const fotoStr = String(foto).trim();
+          return fotoStr !== '' && !fotoStr.includes('avatar.png');
+        });
+
+        const fotoFinal = candidaturaComFoto 
+          ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
+          : candidaturaAlvo.foto;
+
+        if (!fotoFinal || String(fotoFinal).trim() === '' || String(fotoFinal).includes('avatar.png')) {
+          return [];
+        }
+
+        perfisIncluidos.add(perfil.id);
+
+        const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaAlvo.cargo || '').toUpperCase().trim());
+
+        return [{
+          id: perfil.id,
+          nome_completo: perfil.nome_completo,
+          cpf: perfil.cpf,
+          titulo_eleitoral: perfil.titulo_eleitoral,
           created_at: perfil.created_at,
-          sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
-        },
-      }];
-    });
-  };
+          elo_score: perfil.elo_score ?? 1200,
+          matches_count: perfil.matches_count ?? 0,
+          nome_urna: candidaturaAlvo.nome_urna || perfil.nome_completo,
+          partido: candidaturaAlvo.partido || 'S/P',
+          cargo: candidaturaAlvo.cargo, // Exibe exatamente o cargo referente ao escopo!
+          uf: isNacional ? 'BR' : (candidaturaAlvo.uf || perfil.uf),
+          municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaAlvo.cargo || '').toUpperCase().trim())
+            ? '' 
+            : candidaturaAlvo.municipio,
+          foto: fotoFinal,
+          candidaturas: sortedCands,
+          ultima_candidatura: {
+            ...candidaturaAlvo,
+            foto: fotoFinal,
+            perfil_id: perfil.id,
+            created_at: perfil.created_at,
+            sq_candidato: Number(candidaturaAlvo.sq_candidato) || 0,
+          },
+        }];
+      });
+    };
 
   const fetchPerfisEmLotes = async (ids: string[]) => {
     if (ids.length === 0) return [];

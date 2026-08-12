@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
+import { AVAILABLE_UFS } from '@/constants/elections';
 import { getSiteUrl } from '@/lib/seo';
-import { xmlEscape } from '@/lib/sitemap';
+import { getCandidateIdsForUf, SITEMAP_PAGE_SIZE, xmlEscape } from '@/lib/sitemap';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Timeout estendido para 60 segundos na Vercel
-
-const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
+export const maxDuration = 60;
 
 type SitemapEntry = {
   url: string;
@@ -29,15 +28,11 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // 1. Aguarda os parâmetros (exigência do Next.js 15+)
   const resolvedParams = await params;
-
-  // 2. Extrai o identificador limpo (ex: "br.xml" vira "BR", "ac.xml" vira "AC")
-  const ufClean = resolvedParams.id.replace(/\.xml$/i, '').toUpperCase();
+  const rawId = resolvedParams.id.replace(/\.xml$/i, '').toUpperCase();
   const siteUrl = getSiteUrl();
 
-  // 3. Caso seja o sitemap estático (sitemap/static.xml)
-  if (ufClean === 'STATIC') {
+  if (rawId === 'STATIC') {
     const staticEntries: SitemapEntry[] = [
       { url: siteUrl, changeFrequency: 'weekly', priority: 1.0 },
       { url: `${siteUrl}/ranking`, changeFrequency: 'daily', priority: 0.9 },
@@ -52,30 +47,30 @@ export async function GET(
     });
   }
 
-  // 4. Caso seja uma UF (BR, AC, SP, RJ, etc.)
   try {
-    const res = await fetch(`${R2_BASE_URL}/${ufClean}.json`, {
-      next: { revalidate: 86400 }, // Cache de 24 horas no Next
-    });
+    const match = rawId.match(/^([A-Z]{2,3})(?:-(\d+))?$/);
+    const ufCode = match?.[1]?.toUpperCase() ?? rawId;
+    const pageNumber = match && match[2] ? Number(match[2]) - 1 : 0;
 
-    if (!res.ok) {
+    if (!AVAILABLE_UFS.some((uf) => uf === ufCode)) {
       return new NextResponse('Sitemap não encontrado.', { status: 404 });
     }
 
-    const candidates = await res.json();
-    if (!Array.isArray(candidates) || candidates.length === 0) {
+    const pageStart = pageNumber * SITEMAP_PAGE_SIZE;
+    const pageEnd = pageStart + SITEMAP_PAGE_SIZE;
+
+    const ids = await getCandidateIdsForUf(ufCode);
+    const pageIds = [...new Set(ids)].slice(pageStart, pageEnd);
+
+    if (!pageIds.length) {
       return new NextResponse('Sitemap não encontrado.', { status: 404 });
     }
 
-    // 5. Mapeia cada candidato para a URL do perfil
-    const entries: SitemapEntry[] = candidates.map((candidate: any) => {
-      const candidateId = typeof candidate === 'string' ? candidate : candidate.id;
-      return {
-        url: `${siteUrl}/candidato/${encodeURIComponent(candidateId)}`,
-        changeFrequency: 'weekly' as const,
-        priority: 0.6,
-      };
-    });
+    const entries: SitemapEntry[] = pageIds.map((candidateId) => ({
+      url: `${siteUrl}/candidato/${encodeURIComponent(candidateId)}`,
+      changeFrequency: 'weekly' as const,
+      priority: 0.6,
+    }));
 
     return new NextResponse(createXml(entries), {
       headers: {
@@ -83,8 +78,7 @@ export async function GET(
         'Cache-Control': 'public, max-age=86400, s-maxage=86400',
       },
     });
-  } catch (error) {
-    console.error(`Erro ao gerar sitemap para UF ${ufClean}:`, error);
+  } catch {
     return new NextResponse('Erro ao processar sitemap.', { status: 500 });
   }
 }

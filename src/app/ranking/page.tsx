@@ -3,6 +3,8 @@ import RankingClient from './RankingClient';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
 
+export const dynamic = 'force-dynamic';
+
 type RankingPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };

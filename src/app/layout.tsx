@@ -1,11 +1,8 @@
-import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
 
 import FooterMenu from '@/components/layout/BottomNav';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = 'https://politica.centraleti.com.br';
@@ -60,7 +57,7 @@ export default function RootLayout({
             crossOrigin="anonymous"
           />
       <head />
-      <body className={inter.className}>
+      <body className="antialiased">
         {/* Google Analytics */}
         <Script
           strategy="afterInteractive"

@@ -4,6 +4,8 @@ import DueloClient from './DueloClient';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
 
+export const dynamic = 'force-dynamic';
+
 type DueloPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };

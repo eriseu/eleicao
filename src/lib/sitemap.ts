@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { AVAILABLE_UFS } from '@/constants/elections';
 
-export const SITEMAP_PAGE_SIZE = 1000;
+export const SITEMAP_PAGE_SIZE = 10000;
 
 export function xmlEscape(str: string): string {
   return str
@@ -14,32 +14,50 @@ export function xmlEscape(str: string): string {
 
 const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
 
+function normalizeCandidateIds(items: unknown[]): string[] {
+  return Array.from(
+    new Set(
+      items
+        .map((item) => {
+          if (typeof item === 'string') return item.trim();
+          if (item && typeof item === 'object' && 'id' in item && typeof (item as { id?: unknown }).id === 'string') {
+            return (item as { id: string }).id.trim();
+          }
+          return '';
+        })
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+}
+
+export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${R2_BASE_URL}/${uf.toUpperCase()}.json`, {
+      next: {
+        revalidate: 86400,
+        tags: ['candidates-list'],
+      },
+    });
+
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    return normalizeCandidateIds(data);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Busca e consolida a lista completa de IDs de candidatos a partir dos arquivos JSON no R2
  */
 export const getAllCandidateIdsFromR2 = cache(async (): Promise<string[]> => {
   try {
-    const promises = AVAILABLE_UFS.map(async (uf) => {
-      try {
-        const res = await fetch(`${R2_BASE_URL}/${uf.toUpperCase()}.json`, {
-          next: { 
-            revalidate: 86400, // 24 horas
-            tags: ['candidates-list']
-          }
-        });
-        if (!res.ok) return [];
-        const data = await res.json();
-        return Array.isArray(data) ? data.map((c: any) => c.id) : [];
-      } catch (err) {
-        console.error(`Erro ao carregar candidatos do R2 para UF ${uf}:`, err);
-        return [];
-      }
-    });
-
-    const results = await Promise.all(promises);
-    return Array.from(new Set(results.flat().filter(Boolean)));
-  } catch (error) {
-    console.error('Erro ao consolidar IDs de candidatos para o sitemap:', error);
+    const results = await Promise.all(AVAILABLE_UFS.map((uf) => getCandidateIdsForUf(uf)));
+    return normalizeCandidateIds(results.flat());
+  } catch {
     return [];
   }
 });
@@ -52,11 +70,16 @@ export async function getSitemapCandidateCount(): Promise<number> {
   return ids.length;
 }
 
+export async function getSitemapPageCountForUf(uf: string): Promise<number> {
+  const ids = await getCandidateIdsForUf(uf);
+  return Math.max(0, Math.ceil(ids.length / SITEMAP_PAGE_SIZE));
+}
+
 /**
  * Retorna uma fatia (página) de IDs de candidatos para montar sitemaps paginados
  */
-export async function getSitemapCandidatePage(page: number) {
-  const allIds = await getAllCandidateIdsFromR2();
+export async function getSitemapCandidatePage(page: number, uf?: string) {
+  const allIds = uf ? await getCandidateIdsForUf(uf) : await getAllCandidateIdsFromR2();
   const start = page * SITEMAP_PAGE_SIZE;
   const end = start + SITEMAP_PAGE_SIZE;
   return allIds.slice(start, end);

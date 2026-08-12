@@ -1,90 +1,90 @@
 import { NextResponse } from 'next/server';
 import { getSiteUrl } from '@/lib/seo';
-import { xmlEscape } from '@/lib/sitemap'; // ajuste seu import se necessário
+import { xmlEscape } from '@/lib/sitemap';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 60; // Timeout estendido para 60 segundos na Vercel
 
 const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
+
+type SitemapEntry = {
+  url: string;
+  changeFrequency: 'daily' | 'weekly';
+  priority: number;
+};
+
+function createXml(entries: SitemapEntry[]) {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...entries.map(
+      ({ url, changeFrequency, priority }) =>
+        `  <url>\n    <loc>${xmlEscape(url)}</loc>\n    <changefreq>${changeFrequency}</changefreq>\n    <priority>${priority.toFixed(1)}</priority>\n  </url>`
+    ),
+    '</urlset>',
+  ].join('\n');
+}
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // 1. Aguarda os parâmetros (exigência do Next.js 15+)
   const resolvedParams = await params;
-  const ufClean = resolvedParams.id.replace('.xml', '').toUpperCase();
+
+  // 2. Extrai o identificador limpo (ex: "br.xml" vira "BR", "ac.xml" vira "AC")
+  const ufClean = resolvedParams.id.replace(/\.xml$/i, '').toUpperCase();
   const siteUrl = getSiteUrl();
 
-  // Tratamento da página estática
+  // 3. Caso seja o sitemap estático (sitemap/static.xml)
   if (ufClean === 'STATIC') {
-    const staticXml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>${xmlEscape(siteUrl)}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>${xmlEscape(`${siteUrl}/ranking`)}</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>${xmlEscape(`${siteUrl}/duelo`)}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-</urlset>`;
+    const staticEntries: SitemapEntry[] = [
+      { url: siteUrl, changeFrequency: 'weekly', priority: 1.0 },
+      { url: `${siteUrl}/ranking`, changeFrequency: 'daily', priority: 0.9 },
+      { url: `${siteUrl}/duelo`, changeFrequency: 'weekly', priority: 0.8 },
+    ];
 
-    return new NextResponse(staticXml, {
+    return new NextResponse(createXml(staticEntries), {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, s-maxage=86400',
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400',
       },
     });
   }
 
-  // Busca APENAS o JSON do estado solicitado no R2
+  // 4. Caso seja uma UF (BR, AC, SP, RJ, etc.)
   try {
     const res = await fetch(`${R2_BASE_URL}/${ufClean}.json`, {
-      next: { revalidate: 86400 },
+      next: { revalidate: 86400 }, // Cache de 24 horas no Next
     });
 
     if (!res.ok) {
       return new NextResponse('Sitemap não encontrado.', { status: 404 });
     }
 
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
+    const candidates = await res.json();
+    if (!Array.isArray(candidates) || candidates.length === 0) {
       return new NextResponse('Sitemap não encontrado.', { status: 404 });
     }
 
-    // Monta as URLs do estado
-    const urlsXml = data
-      .map((candidato: any) => {
-        const id = candidato.id || candidato;
-        const candidateUrl = `${siteUrl}/candidato/${encodeURIComponent(id)}`;
-        return `  <url>
-    <loc>${xmlEscape(candidateUrl)}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>`;
-      })
-      .join('\n');
+    // 5. Mapeia cada candidato para a URL do perfil
+    const entries: SitemapEntry[] = candidates.map((candidate: any) => {
+      const candidateId = typeof candidate === 'string' ? candidate : candidate.id;
+      return {
+        url: `${siteUrl}/candidato/${encodeURIComponent(candidateId)}`,
+        changeFrequency: 'weekly' as const,
+        priority: 0.6,
+      };
+    });
 
-    const body = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urlsXml}
-</urlset>`;
-
-    return new NextResponse(body, {
+    return new NextResponse(createXml(entries), {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
         'Cache-Control': 'public, max-age=86400, s-maxage=86400',
       },
     });
   } catch (error) {
-    console.error(`Erro ao gerar sitemap para a UF ${ufClean}:`, error);
+    console.error(`Erro ao gerar sitemap para UF ${ufClean}:`, error);
     return new NextResponse('Erro ao processar sitemap.', { status: 500 });
   }
 }

@@ -140,31 +140,35 @@ export default function DueloClient() {
 
       const candidaturaReferencia = candidaturaEstadualOuNacional || candidaturaMaisRecente;
 
-      return [{
-        id: perfil.id,
-        nome_completo: perfil.nome_completo,
-        cpf: perfil.cpf,
-        titulo_eleitoral: perfil.titulo_eleitoral,
-        created_at: perfil.created_at,
-        elo_score: perfil.elo_score ?? 1200,
-        matches_count: perfil.matches_count ?? 0,
-        nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
-        partido: candidaturaMaisRecente.partido || 'S/P',
-        cargo: candidaturaReferencia.cargo,
-        uf: candidaturaReferencia.uf,
-        municipio: CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
-          ? '' 
-          : candidaturaReferencia.municipio,
-        foto: fotoFinal,
-        candidaturas: sortedCands,
-        ultima_candidatura: {
-          ...candidaturaMaisRecente,
-          foto: fotoFinal,
-          perfil_id: perfil.id,
+      // DENTRO de processCandidaturas:
+        const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaMaisRecente.cargo || '').toUpperCase().trim());
+
+        return [{
+          id: perfil.id,
+          nome_completo: perfil.nome_completo,
+          cpf: perfil.cpf,
+          titulo_eleitoral: perfil.titulo_eleitoral,
           created_at: perfil.created_at,
-          sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
-        },
-      }];
+          elo_score: perfil.elo_score ?? 1200,
+          matches_count: perfil.matches_count ?? 0,
+          nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
+          partido: candidaturaMaisRecente.partido || 'S/P',
+          cargo: candidaturaMaisRecente.cargo,
+          // Mantém 'BR' se o cargo for de Presidente/Vice-Presidente
+          uf: isNacional ? 'BR' : (candidaturaReferencia.uf || perfil.uf),
+          municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
+            ? '' 
+            : candidaturaReferencia.municipio,
+          foto: fotoFinal,
+          candidaturas: sortedCands,
+          ultima_candidatura: {
+            ...candidaturaMaisRecente,
+            foto: fotoFinal,
+            perfil_id: perfil.id,
+            created_at: perfil.created_at,
+            sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
+          },
+        }];
     });
   };
 
@@ -175,29 +179,42 @@ export default function DueloClient() {
   };
 
   const filteredCandidates = useMemo(() => {
-    if (isSharedDuel) return candidates;
+      if (isSharedDuel) return candidates;
 
-    const cargosPermitidos = getCargosPorEscopo();
+      const cargosPermitidos = getCargosPorEscopo();
 
-    return candidates
-      .filter((candidate) => {
-        if (candidate.uf !== selectedUf) return false;
-        if (selectedMunicipio && candidate.municipio !== selectedMunicipio) return false;
+      return candidates
+        .filter((candidate) => {
+          const cargoCandidato = (
+            candidate.ultima_candidatura?.cargo || 
+            candidate.cargo || 
+            ''
+          ).toUpperCase().trim();
 
-        const cargoCandidato = (
-          candidate.ultima_candidatura?.cargo || 
-          candidate.cargo || 
-          ''
-        ).toUpperCase().trim();
+          // 🛑 REGRA 1: Filtro BR estrito (somente candidatos nacionais com UF = 'BR')
+          if (selectedUf === 'BR') {
+            return candidate.uf === 'BR' && CARGOS_POR_ESCOPO.nacional.includes(cargoCandidato);
+          }
 
-        return cargosPermitidos.some(
-          (c) => c.toUpperCase().trim() === cargoCandidato
-        );
-      })
-      .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
-  }, [candidates, isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo]);
+          // 🛑 REGRA 2: Filtro Estadual/Municipal
+          if (candidate.uf !== selectedUf) return false;
 
-  // Sorteia candidatos
+          if (selectedMunicipio) {
+            // Se selecionou município, só permite candidatos daquele município específico
+            if (candidate.municipio !== selectedMunicipio) return false;
+          } else {
+            // Se NÃO selecionou município (apenas UF), ignora candidatos estritamente municipais
+            if (CARGOS_POR_ESCOPO.municipal.includes(cargoCandidato)) return false;
+          }
+
+          return cargosPermitidos.some(
+            (c) => c.toUpperCase().trim() === cargoCandidato
+          );
+        })
+        .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
+    }, [candidates, isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo]);
+
+      // Sorteia candidatos
   const randomizeMatch = useCallback((poolList = filteredCandidates) => {
     if (poolList.length < 2) {
       setC1(poolList[0] || null);
@@ -321,28 +338,35 @@ export default function DueloClient() {
   };
 
   const getRankingUrl = (candidate: Candidato) => {
-    const uf = candidate.ultima_candidatura?.uf || candidate.uf || 'BR';
-    const municipio = candidate.ultima_candidatura?.municipio || candidate.municipio;
-    const cargo = (candidate.ultima_candidatura?.cargo || candidate.cargo || '').toUpperCase().trim();
+      const cargo = (candidate.ultima_candidatura?.cargo || candidate.cargo || '').toUpperCase().trim();
+      const candidateUf = candidate.uf || candidate.ultima_candidatura?.uf || 'BR';
+      const candidateMunicipio = candidate.municipio || candidate.ultima_candidatura?.municipio;
 
-    const isCargoMunicipal = ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'].includes(cargo);
+      let escopo: 'nacional' | 'estadual' | 'municipal' = 'nacional';
+      const params = new URLSearchParams({ highlight: candidate.id });
 
-    const escopo = (isCargoMunicipal && municipio)
-      ? 'municipal'
-      : (selectedMunicipio ? 'municipal' : (selectedUf === 'BR' ? 'nacional' : 'estadual'));
+      // 1. Escopo Nacional (BR)
+      if (selectedUf === 'BR' || candidateUf === 'BR' || CARGOS_POR_ESCOPO.nacional.includes(cargo)) {
+        escopo = 'nacional';
+        params.set('uf', 'BR');
+      } 
+      // 2. Escopo Municipal
+      else if (selectedMunicipio || CARGOS_POR_ESCOPO.municipal.includes(cargo)) {
+        escopo = 'municipal';
+        params.set('uf', candidateUf);
+        if (candidateMunicipio || selectedMunicipio) {
+          params.set('municipio', candidateMunicipio || selectedMunicipio);
+        }
+      } 
+      // 3. Escopo Estadual
+      else {
+        escopo = 'estadual';
+        params.set('uf', candidateUf);
+      }
 
-    const params = new URLSearchParams({ 
-      uf, 
-      escopo,
-      highlight: candidate.id 
-    });
-
-    if ((escopo === 'municipal' || selectedMunicipio) && municipio) {
-      params.set('municipio', municipio);
-    }
-
-    return `/ranking?${params.toString()}`;
-  };
+      params.set('escopo', escopo);
+      return `/ranking?${params.toString()}`;
+    };
 
   const escolher = async (escolhido: Candidato, outro: Candidato) => {
     if (submitting || !isSharedDuel) return; // Só permite votar no link de duelo aberto

@@ -1,83 +1,66 @@
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
-
-// Conexão com a VPS
-const pool = new Pool({
-  host: process.env.DB_HOST || '72.61.58.199',
-  port: Number(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || 'tinder_politico',
-  user: process.env.DB_USER || 'tinder',
-  password: process.env.DB_PASSWORD,
-});
+import { pool } from '@/lib/db'; // Ajuste o import do seu conector Postgres
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-
   try {
-    // 1. Busca todas as candidaturas daquele perfil_id no banco da VPS
-    const result = await pool.query(
-      `SELECT 
-        c.perfil_id,
-        p.nome_completo,
-        c.nome_urna,
-        c.partido,
-        c.cargo,
-        c.ano_eleicao,
-        c.uf,
-        c.municipio,
-        c.foto,
-        c.sq_candidato
-       FROM public.candidaturas c
-       LEFT JOIN public.perfis_candidatos p ON p.id::text = c.perfil_id::text
-       WHERE c.perfil_id = $1
-       ORDER BY c.ano_eleicao DESC`,
-      [id]
-    );
+    const { id } = await params;
 
-    if (result.rows.length === 0) {
+    if (!id) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+    }
+
+    // 1. Busca os dados do perfil unindo com todas as candidaturas que possuem esse perfil_id
+    const query = `
+      SELECT 
+        p.id AS perfil_id,
+        p.nome_completo,
+        p.cpf,
+        p.elo_score,
+        p.matches_count,
+        c.id AS candidatura_id,
+        c.sq_candidato,
+        c.nome_urna,
+        c.cargo,
+        c.uf
+      FROM perfis_candidatos p
+      LEFT JOIN candidaturas c ON c.perfil_id = p.id::text
+      WHERE p.id::text = $1
+      ORDER BY c.id DESC;
+    `;
+
+    const { rows } = await pool.query(query, [id]);
+
+    if (!rows || rows.length === 0) {
       return NextResponse.json({ error: 'Candidato não encontrado' }, { status: 404 });
     }
 
-    const historicoBruto = result.rows;
+    // Estrutura a resposta enviando o perfil principal e a lista de candidaturas
+    const primeiroRegistro = rows[0];
 
-    // Formata cada candidatura do histórico
-    const historicoFormatado = historicoBruto.map((row) => {
-      let fotoLimpa = row.foto;
-      if (fotoLimpa && fotoLimpa.includes('/')) {
-        fotoLimpa = fotoLimpa.split('/').pop();
-      }
-
-      return {
-        ...row,
-        id: row.perfil_id,
-        cargo: (row.cargo || '').toUpperCase().trim(),
-        foto: fotoLimpa || 'avatar.png',
-      };
-    });
-
-    // Pega os dados principais da candidatura mais recente
-    const candMaisRecente = historicoFormatado[0];
+    const candidato = {
+      id: primeiroRegistro.perfil_id,
+      nome_completo: primeiroRegistro.nome_completo,
+      nome_urna: primeiroRegistro.nome_urna || primeiroRegistro.nome_completo,
+      sq_candidato: primeiroRegistro.sq_candidato,
+      cargo: primeiroRegistro.cargo,
+      uf: primeiroRegistro.uf,
+      elo_score: primeiroRegistro.elo_score,
+      matches_count: primeiroRegistro.matches_count,
+    };
 
     return NextResponse.json({
-      candidato: {
-        id: candMaisRecente.perfil_id,
-        nome_completo: candMaisRecente.nome_completo || candMaisRecente.nome_urna,
-        nome_urna: candMaisRecente.nome_urna,
-        cargo: candMaisRecente.cargo,
-        partido: candMaisRecente.partido,
-        uf: candMaisRecente.uf,
-        municipio: candMaisRecente.municipio,
-        foto: candMaisRecente.foto,
-        sq_candidato: candMaisRecente.sq_candidato,
-        ano_eleicao: candMaisRecente.ano_eleicao,
-      },
-      historico: historicoFormatado,
+      candidato,
+      historico: rows,
     });
-  } catch (error) {
-    console.error('Erro ao consultar Postgres da VPS:', error);
-    return NextResponse.json({ error: 'Erro ao buscar perfil no banco' }, { status: 500 });
+
+  } catch (error: any) {
+    console.error('Erro ao buscar candidato no Postgres:', error);
+    return NextResponse.json(
+      { error: 'Erro interno ao consultar o candidato', details: error.message },
+      { status: 500 }
+    );
   }
 }

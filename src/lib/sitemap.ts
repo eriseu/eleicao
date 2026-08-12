@@ -47,6 +47,11 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
   try {
     const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
     const res = await fetch(url, {
+      headers: {
+        'Origin': 'https://politica.centraleti.com.br',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+      },
       next: {
         revalidate: 86400,
         tags: ['candidates-list'],

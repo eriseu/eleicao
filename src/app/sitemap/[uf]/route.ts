@@ -6,10 +6,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ uf: string }> }
 ) {
-  const { uf } = await params;
+  // Resolve os parâmetros assíncronos do Next.js 15+
+  const resolvedParams = await params;
   
-  // Exemplo: 'mt.xml' -> vira 'mt'
-  const rawParam = resolvedParams.uf || (resolvedParams as any).id || '';
+  // Trata e limpa o parâmetro (ex: 'mt.xml' -> 'MT')
+  const rawParam = resolvedParams.uf || '';
   const ufClean = rawParam.replace(/\.xml$/i, '').toUpperCase();
 
   const siteUrl = getSiteUrl();
@@ -37,8 +38,6 @@ ${urlEntries.join('\n')}
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
       'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=86400',
-      'Origin': 'https://politica.centraleti.com.br',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     },
   });
 }

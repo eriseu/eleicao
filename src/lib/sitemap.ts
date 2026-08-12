@@ -31,21 +31,29 @@ function normalizeCandidateIds(items: unknown[]): string[] {
 }
 
 export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
+  const url = `${R2_BASE_URL}/${uf.toUpperCase()}.json`;
   try {
-    const res = await fetch(`${R2_BASE_URL}/${uf.toUpperCase()}.json`, {
+    const res = await fetch(url, {
       next: {
         revalidate: 86400,
         tags: ['candidates-list'],
       },
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`[SITEMAP FETCH ERROR] ${url} retornou status ${res.status}`);
+      return [];
+    }
 
     const data = await res.json();
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) {
+      console.error(`[SITEMAP DATA ERROR] O conteúdo de ${url} não é um Array`);
+      return [];
+    }
 
     return normalizeCandidateIds(data);
-  } catch {
+  } catch (error) {
+    console.error(`[SITEMAP EXCEPTION] Falha ao buscar ${url}:`, error);
     return [];
   }
 }

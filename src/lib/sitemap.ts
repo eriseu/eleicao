@@ -12,7 +12,7 @@ export function xmlEscape(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
-const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
+const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos-ids';
 
 function normalizeCandidateIds(items: unknown[]): string[] {
   if (!Array.isArray(items)) return [];

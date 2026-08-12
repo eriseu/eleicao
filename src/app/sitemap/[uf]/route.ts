@@ -1,15 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getCandidateIdsForUf, xmlEscape } from '@/lib/sitemap';
 import { getSiteUrl } from '@/lib/seo';
 
-export const dynamic = 'force-dynamic';
-
-interface RouteProps {
-  params: Promise<{ uf: string }>; // Ou { id: string } a depender do seu nome de pasta
-}
-
-export async function GET(request: Request, { params }: RouteProps) {
-  const resolvedParams = await params;
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ uf: string }> }
+) {
+  const { uf } = await params;
   
   // Exemplo: 'mt.xml' -> vira 'mt'
   const rawParam = resolvedParams.uf || (resolvedParams as any).id || '';

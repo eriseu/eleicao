@@ -19,17 +19,21 @@ function normalizeCandidateIds(items: unknown[]): string[] {
 
   const ids = items
     .map((item) => {
-      if (!item || typeof item !== 'object') return null;
+      // Caso 1: Item já é uma string simples ("00156063-27ab-...")
+      if (typeof item === 'string') return item.trim();
 
-      const candidate = item as Record<string, unknown>;
+      // Caso 2: Item é um número
+      if (typeof item === 'number') return String(item).trim();
 
-      // Tenta pegar pelo 'id' (UUID) ou pelo 'sq_candidato'
-      if (typeof candidate.id === 'string' && candidate.id.trim()) {
-        return candidate.id.trim();
-      }
-
-      if (candidate.sq_candidato) {
-        return String(candidate.sq_candidato).trim();
+      // Caso 3: Item é um objeto ({ id: "...", sq_candidato: ... })
+      if (item && typeof item === 'object') {
+        const candidate = item as Record<string, unknown>;
+        if (typeof candidate.id === 'string' && candidate.id.trim()) {
+          return candidate.id.trim();
+        }
+        if (candidate.sq_candidato) {
+          return String(candidate.sq_candidato).trim();
+        }
       }
 
       return null;
@@ -50,27 +54,23 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
     });
 
     if (!res.ok) {
-      console.error(`[SITEMAP] HTTP Error ${res.status} ao buscar ${url}`);
+      console.error(`[SITEMAP ERROR] HTTP ${res.status} ao carregar ${url}`);
       return [];
     }
 
     const data = await res.json();
     if (!Array.isArray(data)) {
-      console.error(`[SITEMAP] Resposta inválida (não é Array) em ${url}`);
+      console.error(`[SITEMAP ERROR] JSON retornado não é um Array em ${url}`);
       return [];
     }
 
-    const normalized = normalizeCandidateIds(data);
-    return normalized;
+    return normalizeCandidateIds(data);
   } catch (error) {
     console.error(`[SITEMAP EXCEPTION] Falha em getCandidateIdsForUf(${uf}):`, error);
     return [];
   }
 }
 
-/**
- * Busca e consolida a lista completa de IDs de candidatos a partir dos arquivos JSON no R2
- */
 export const getAllCandidateIdsFromR2 = cache(async (): Promise<string[]> => {
   try {
     const results = await Promise.all(AVAILABLE_UFS.map((uf) => getCandidateIdsForUf(uf)));

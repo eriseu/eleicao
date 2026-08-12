@@ -1,37 +1,29 @@
-import { getSiteUrl } from '@/lib/seo';
-import { getSitemapCandidateCount, xmlEscape, SITEMAP_PAGE_SIZE } from '@/lib/sitemap';
+import { NextResponse } from 'next/server';
+import { AVAILABLE_UFS } from '@/constants/elections';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const siteUrl = getSiteUrl();
+  // Lista todas as UFs para gerar /sitemap/SP.xml, /sitemap/RJ.xml, etc.
+  const ufsSitemaps = AVAILABLE_UFS.map(
+    (uf) => `
+  <sitemap>
+    <loc>https://politica.centraleti.com.br/sitemap/${uf.toLowerCase()}.xml</loc>
+  </sitemap>`
+  ).join('');
 
-  try {
-    // Obtém o total de candidatos somando o tamanho de todos os arquivos JSON do R2
-    const candidateCount = await getSitemapCandidateCount();
-    const pageSize = SITEMAP_PAGE_SIZE || 50000; // Fallback de segurança se necessário
-    const pageCount = Math.ceil(candidateCount / pageSize) || 1;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://politica.centraleti.com.br/sitemap/static.xml</loc>
+  </sitemap>
+${ufsSitemaps}
+</sitemapindex>`;
 
-    const sitemaps = [
-      `${siteUrl}/sitemap/static.xml`,
-      ...Array.from({ length: pageCount }, (_, page) => `${siteUrl}/sitemap/${page}.xml`),
-    ];
-
-    const body = [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-      ...sitemaps.map((url) => `  <sitemap><loc>${xmlEscape(url)}</loc></sitemap>`),
-      '</sitemapindex>',
-    ].join('\n');
-
-    return new Response(body, {
-      headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
-      },
-    });
-  } catch (error) {
-    console.error('Erro ao gerar índice de sitemap:', error);
-    return new Response('Não foi possível gerar o sitemap.', { status: 503 });
-  }
+  return new NextResponse(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=86400',
+    },
+  });
 }

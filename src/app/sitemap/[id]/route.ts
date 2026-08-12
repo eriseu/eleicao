@@ -1,95 +1,90 @@
+import { NextResponse } from 'next/server';
 import { getSiteUrl } from '@/lib/seo';
-import { getSitemapCandidatePage, xmlEscape } from '@/lib/sitemap';
+import { xmlEscape } from '@/lib/sitemap'; // ajuste seu import se necessário
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Define o timeout máximo para 60 segundos
-export const revalidate = 86400; // Cache de 24 horas na rota do sitemap
+export const maxDuration = 60;
 
-type SitemapEntry = {
-  url: string;
-  changeFrequency: 'daily' | 'weekly';
-  priority: number;
-};
-
-function createXml(entries: SitemapEntry[]) {
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    ...entries.map(({ url, changeFrequency, priority }) => [
-      '  <url>',
-      `    <loc>${xmlEscape(url)}</loc>`,
-      `    <changefreq>${changeFrequency}</changefreq>`,
-      `    <priority>${priority.toFixed(1)}</priority>`,
-      '  </url>',
-    ].join('\n')),
-    '</urlset>',
-  ].join('\n');
-}
+const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> } // <-- Ajustado para Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Aguarda a resolução dos parâmetros exigidos pelo Next.js 15+
   const resolvedParams = await params;
-  
-  // Limpa o ".xml" caso venha na URL (ex: "0.xml" vira "0")
-  const idClean = resolvedParams.id.replace('.xml', '');
+  const ufClean = resolvedParams.id.replace('.xml', '').toUpperCase();
   const siteUrl = getSiteUrl();
-  let entries: SitemapEntry[];
 
-  if (idClean === 'static') {
-    entries = [
-      { url: siteUrl, changeFrequency: 'weekly', priority: 1 },
-      { url: `${siteUrl}/ranking`, changeFrequency: 'daily', priority: 0.9 },
-      { url: `${siteUrl}/duelo`, changeFrequency: 'weekly', priority: 0.8 },
-    ];
-  } else {
-    const page = parseInt(idClean, 10);
-    if (isNaN(page) || !Number.isSafeInteger(page) || page < 0) {
-      return new Response('Sitemap não encontrado.', { status: 404 });
-    }
+  // Tratamento da página estática
+  if (ufClean === 'STATIC') {
+    const staticXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${xmlEscape(siteUrl)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${xmlEscape(`${siteUrl}/ranking`)}</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>${xmlEscape(`${siteUrl}/duelo`)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>`;
 
-    try {
-      const candidates = await getSitemapCandidatePage(page);
-      if (!candidates || candidates.length === 0) {
-        return new Response('Sitemap não encontrado.', { status: 404 });
-      }
-
-      entries = candidates.flatMap((candidate: any) => {
-        // Trata o caso em que 'candidate' pode ser string (ID) ou objeto
-        const candidateId = typeof candidate === 'string' ? candidate : candidate.id;
-        const candidateUf = typeof candidate === 'object' ? candidate?.uf : undefined;
-
-        const rankingUrl = new URL('/ranking', siteUrl);
-        if (candidateUf) {
-          rankingUrl.searchParams.set('uf', candidateUf);
-        }
-        rankingUrl.searchParams.set('highlight', candidateId);
-
-        return [
-          {
-            url: rankingUrl.toString(),
-            changeFrequency: 'daily' as const,
-            priority: 0.7,
-          },
-          {
-            url: `${siteUrl}/candidato/${encodeURIComponent(candidateId)}`,
-            changeFrequency: 'weekly' as const,
-            priority: 0.6,
-          },
-        ];
-      });
-    } catch (error) {
-      console.error('Erro ao gerar sitemap dinâmico:', error);
-      return new Response('Não foi possível gerar o sitemap.', { status: 503 });
-    }
+    return new NextResponse(staticXml, {
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, s-maxage=86400',
+      },
+    });
   }
 
-  return new Response(createXml(entries), {
-    headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
-    },
-  });
+  // Busca APENAS o JSON do estado solicitado no R2
+  try {
+    const res = await fetch(`${R2_BASE_URL}/${ufClean}.json`, {
+      next: { revalidate: 86400 },
+    });
+
+    if (!res.ok) {
+      return new NextResponse('Sitemap não encontrado.', { status: 404 });
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      return new NextResponse('Sitemap não encontrado.', { status: 404 });
+    }
+
+    // Monta as URLs do estado
+    const urlsXml = data
+      .map((candidato: any) => {
+        const id = candidato.id || candidato;
+        const candidateUrl = `${siteUrl}/candidato/${encodeURIComponent(id)}`;
+        return `  <url>
+    <loc>${xmlEscape(candidateUrl)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`;
+      })
+      .join('\n');
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urlsXml}
+</urlset>`;
+
+    return new NextResponse(body, {
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+      },
+    });
+  } catch (error) {
+    console.error(`Erro ao gerar sitemap para a UF ${ufClean}:`, error);
+    return new NextResponse('Erro ao processar sitemap.', { status: 500 });
+  }
 }

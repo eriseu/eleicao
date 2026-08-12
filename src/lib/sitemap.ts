@@ -48,8 +48,10 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
 
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Cache-Control': 'no-cache',
     },
     next: {
       revalidate: 86400,
@@ -60,7 +62,7 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
   if (!res.ok) {
     const errorMsg = `HTTP ${res.status} ${res.statusText} ao buscar ${url}`;
     console.error(`[SITEMAP FETCH ERROR] ${errorMsg}`);
-    throw new Error(errorMsg); // Lança para o catch da rota pegar
+    throw new Error(errorMsg);
   }
 
   const data = await res.json();

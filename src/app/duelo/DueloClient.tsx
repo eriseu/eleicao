@@ -338,33 +338,38 @@ export default function DueloClient() {
   };
 
   const getRankingUrl = (candidate: Candidato) => {
-      const cargo = (candidate.ultima_candidatura?.cargo || candidate.cargo || '').toUpperCase().trim();
       const candidateUf = candidate.uf || candidate.ultima_candidatura?.uf || 'BR';
       const candidateMunicipio = candidate.municipio || candidate.ultima_candidatura?.municipio;
 
-      let escopo: 'nacional' | 'estadual' | 'municipal' = 'nacional';
-      const params = new URLSearchParams({ highlight: candidate.id });
-
-      // 1. Escopo Nacional (BR)
-      if (selectedUf === 'BR' || candidateUf === 'BR' || CARGOS_POR_ESCOPO.nacional.includes(cargo)) {
-        escopo = 'nacional';
-        params.set('uf', 'BR');
-      } 
-      // 2. Escopo Municipal
-      else if (selectedMunicipio || CARGOS_POR_ESCOPO.municipal.includes(cargo)) {
-        escopo = 'municipal';
-        params.set('uf', candidateUf);
-        if (candidateMunicipio || selectedMunicipio) {
-          params.set('municipio', candidateMunicipio || selectedMunicipio);
-        }
-      } 
-      // 3. Escopo Estadual
-      else {
-        escopo = 'estadual';
-        params.set('uf', candidateUf);
+      // 1. SE O DUELO FOI NACIONAL (BR)
+      if (selectedUf === 'BR') {
+        const params = new URLSearchParams({
+          uf: 'BR',
+          escopo: 'nacional',
+          highlight: candidate.id,
+        });
+        return `/ranking?${params.toString()}`;
       }
 
-      params.set('escopo', escopo);
+      // 2. SE O DUELO FOI EM UM MUNICÍPIO ESPECÍFICO
+      if (selectedMunicipio) {
+        const params = new URLSearchParams({
+          uf: selectedUf,
+          municipio: selectedMunicipio,
+          escopo: 'municipal',
+          highlight: candidate.id,
+        });
+        return `/ranking?${params.toString()}`;
+      }
+
+      // 3. SE O DUELO FOI ESTADUAL (selectedUf != 'BR' e sem município selecionado)
+      // Força o escopo ESTADUAL para garantir que mesmo candidatos que foram Vereadores entrem no ranking do estado
+      const params = new URLSearchParams({
+        uf: selectedUf,
+        escopo: 'estadual',
+        highlight: candidate.id,
+      });
+
       return `/ranking?${params.toString()}`;
     };
 

@@ -1,6 +1,7 @@
+import { cache } from 'react';
 import { AVAILABLE_UFS } from '@/constants/elections';
 
-export const SITEMAP_PAGE_SIZE = 5000;
+export const SITEMAP_PAGE_SIZE = 1000;
 
 export function xmlEscape(str: string): string {
   return str
@@ -16,13 +17,15 @@ const R2_BASE_URL = 'https://fotos.centraleti.com.br/candidatos';
 /**
  * Busca e consolida a lista completa de IDs de candidatos a partir dos arquivos JSON no R2
  */
-export async function getAllCandidateIdsFromR2(): Promise<string[]> {
+export const getAllCandidateIdsFromR2 = cache(async (): Promise<string[]> => {
   try {
-    // Lê os JSONs de todas as UFs simultaneamente a partir da CDN
     const promises = AVAILABLE_UFS.map(async (uf) => {
       try {
         const res = await fetch(`${R2_BASE_URL}/${uf.toUpperCase()}.json`, {
-          next: { revalidate: 86400 } // Cache de 24 horas
+          next: { 
+            revalidate: 86400, // 24 horas
+            tags: ['candidates-list']
+          }
         });
         if (!res.ok) return [];
         const data = await res.json();
@@ -34,15 +37,12 @@ export async function getAllCandidateIdsFromR2(): Promise<string[]> {
     });
 
     const results = await Promise.all(promises);
-    
-    // Remove duplicatas (ex: candidatos presentes tanto em 'BR' quanto na UF de origem)
-    const uniqueIds = Array.from(new Set(results.flat().filter(Boolean)));
-    return uniqueIds;
+    return Array.from(new Set(results.flat().filter(Boolean)));
   } catch (error) {
     console.error('Erro ao consolidar IDs de candidatos para o sitemap:', error);
     return [];
   }
-}
+});
 
 /**
  * Retorna o total de candidatos únicos cadastrados nos JSONs

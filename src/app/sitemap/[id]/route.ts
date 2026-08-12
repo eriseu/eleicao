@@ -2,6 +2,8 @@ import { getSiteUrl } from '@/lib/seo';
 import { getSitemapCandidatePage, xmlEscape } from '@/lib/sitemap';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Define o timeout máximo para 60 segundos
+export const revalidate = 86400; // Cache de 24 horas na rota do sitemap
 
 type SitemapRouteProps = {
   params: Promise<{ id: string }>;

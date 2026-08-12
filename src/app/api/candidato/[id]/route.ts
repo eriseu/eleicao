@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db'; // Ajuste o import do seu conector Postgres
+import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
+
+const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
 
 export async function GET(
   request: Request,
@@ -12,52 +14,56 @@ export async function GET(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
-    // 1. Busca os dados do perfil unindo com todas as candidaturas que possuem esse perfil_id
-    const query = `
-      SELECT 
-        p.id AS perfil_id,
-        p.nome_completo,
-        p.cpf,
-        p.elo_score,
-        p.matches_count,
-        c.id AS candidatura_id,
-        c.sq_candidato,
-        c.nome_urna,
-        c.cargo,
-        c.uf
-      FROM perfis_candidatos p
-      LEFT JOIN candidaturas c ON c.perfil_id = p.id::text
-      WHERE p.id::text = $1
-      ORDER BY c.id DESC;
-    `;
+    // 1. Busca os dados do perfil do candidato direto no VPS
+    const perfilResponse = await fetch(`${VPS_API_URL}/api/perfis-candidatos?id=eq.${id}`, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-    const { rows } = await pool.query(query, [id]);
+    if (!perfilResponse.ok) {
+      return NextResponse.json({ error: 'Erro ao buscar perfil no VPS' }, { status: perfilResponse.status });
+    }
 
-    if (!rows || rows.length === 0) {
+    const perfis = await perfilResponse.json();
+    const perfil = Array.isArray(perfis) ? perfis[0] : perfis;
+
+    if (!perfil) {
       return NextResponse.json({ error: 'Candidato não encontrado' }, { status: 404 });
     }
 
-    // Estrutura a resposta enviando o perfil principal e a lista de candidaturas
-    const primeiroRegistro = rows[0];
+    // 2. Busca as candidaturas associadas a esse perfil no VPS
+    const candidaturas = await fetchCandidaturasFromVPS([id]);
 
+    // Ordena as candidaturas do ano mais recente ao mais antigo
+    const candidaturasOrdenadas = (candidaturas || []).sort(
+      (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
+    );
+
+    const candidaturaMaisRecente = candidaturasOrdenadas[0] || {};
+
+    // 3. Monta o objeto padronizado
     const candidato = {
-      id: primeiroRegistro.perfil_id,
-      nome_completo: primeiroRegistro.nome_completo,
-      nome_urna: primeiroRegistro.nome_urna || primeiroRegistro.nome_completo,
-      sq_candidato: primeiroRegistro.sq_candidato,
-      cargo: primeiroRegistro.cargo,
-      uf: primeiroRegistro.uf,
-      elo_score: primeiroRegistro.elo_score,
-      matches_count: primeiroRegistro.matches_count,
+      id: perfil.id,
+      nome_completo: perfil.nome_completo,
+      cpf: perfil.cpf,
+      elo_score: perfil.elo_score ?? 1200,
+      matches_count: perfil.matches_count ?? 0,
+      nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
+      sq_candidato: candidaturaMaisRecente.sq_candidato || null,
+      cargo: candidaturaMaisRecente.cargo || null,
+      uf: candidaturaMaisRecente.uf || null,
+      partido: candidaturaMaisRecente.partido || 'S/P',
+      foto: candidaturaMaisRecente.foto || candidaturaMaisRecente.sq_candidato || null,
     };
 
     return NextResponse.json({
       candidato,
-      historico: rows,
+      historico: candidaturasOrdenadas,
     });
 
   } catch (error: any) {
-    console.error('Erro ao buscar candidato no Postgres:', error);
+    console.error('Erro ao buscar candidato na VPS:', error);
     return NextResponse.json(
       { error: 'Erro interno ao consultar o candidato', details: error.message },
       { status: 500 }

@@ -5,10 +5,6 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Define o timeout máximo para 60 segundos
 export const revalidate = 86400; // Cache de 24 horas na rota do sitemap
 
-type SitemapRouteProps = {
-  params: Promise<{ id: string }>;
-};
-
 type SitemapEntry = {
   url: string;
   changeFrequency: 'daily' | 'weekly';
@@ -32,29 +28,25 @@ function createXml(entries: SitemapEntry[]) {
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // <-- Ajustado para Promise
 ) {
+  // Aguarda a resolução dos parâmetros exigidos pelo Next.js 15+
+  const resolvedParams = await params;
+  
   // Limpa o ".xml" caso venha na URL (ex: "0.xml" vira "0")
-  const idClean = params.id.replace('.xml', '');
-  const pageId = parseInt(idClean, 10);
-
-  if (isNaN(pageId)) {
-    return new Response('Sitemap não encontrado.', { status: 404 });
-  }
-
-  const id = fileName.slice(0, -4);
+  const idClean = resolvedParams.id.replace('.xml', '');
   const siteUrl = getSiteUrl();
   let entries: SitemapEntry[];
 
-  if (id === 'static') {
+  if (idClean === 'static') {
     entries = [
       { url: siteUrl, changeFrequency: 'weekly', priority: 1 },
       { url: `${siteUrl}/ranking`, changeFrequency: 'daily', priority: 0.9 },
       { url: `${siteUrl}/duelo`, changeFrequency: 'weekly', priority: 0.8 },
     ];
   } else {
-    const page = Number(id);
-    if (!Number.isSafeInteger(page) || page < 0) {
+    const page = parseInt(idClean, 10);
+    if (isNaN(page) || !Number.isSafeInteger(page) || page < 0) {
       return new Response('Sitemap não encontrado.', { status: 404 });
     }
 

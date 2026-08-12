@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
@@ -36,30 +35,37 @@ export default function DueloClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sharedUf = searchParams.get('uf');
+  const sharedMunicipio = searchParams.get('municipio') || '';
   const sharedC1Id = searchParams.get('c1');
   const sharedC2Id = searchParams.get('c2');
+
   const isSharedDuel = Boolean(sharedC1Id && sharedC2Id);
   const hasValidSharedUf = Boolean(
     sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf)
   );
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
+  const [isMounted, setIsMounted] = useState(false);
   const [candidates, setCandidates] = useState<Candidato[]>([]);
   const [c1, setC1] = useState<Candidato | null>(null);
   const [c2, setC2] = useState<Candidato | null>(null);
+  
   const [selectedUf, setSelectedUf] = useState(
-    sharedUf && AVAILABLE_UFS.some((uf) => uf === sharedUf) ? sharedUf : 'BR'
+    hasValidSharedUf ? (sharedUf as string) : 'BR'
   );
-  const [selectedMunicipio, setSelectedMunicipio] = useState('');
+  const [selectedMunicipio, setSelectedMunicipio] = useState(sharedMunicipio);
   const [municipios, setMunicipios] = useState<string[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  // Busca de municípios por UF
+  // 1️⃣ Hydration & Sincronização dos parâmetros da URL
+  useEffect(() => {
+    setIsMounted(true);
+    if (sharedUf) setSelectedUf(sharedUf);
+    if (sharedMunicipio) setSelectedMunicipio(sharedMunicipio);
+  }, [sharedUf, sharedMunicipio]);
+
+  // 2️⃣ Busca de municípios por UF (via VPS)
   useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
@@ -103,7 +109,6 @@ export default function DueloClient() {
     return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-  // Processamento com bloqueio RÍGIDO para candidatos sem foto válida
   const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
     const perfisIncluidos = new Set<string>();
     return perfis.flatMap((perfil) => {
@@ -115,7 +120,6 @@ export default function DueloClient() {
       const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
       const candidaturaMaisRecente = sortedCands[0];
 
-      // Busca a primeira foto válida entre as candidaturas do histórico
       const candidaturaComFoto = sortedCands.find((c: any) => {
         const foto = c.foto || c.sq_candidato;
         if (!foto) return false;
@@ -127,7 +131,6 @@ export default function DueloClient() {
         ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
         : candidaturaMaisRecente.foto;
 
-      // 🛑 GARANTIA: Se não houver foto válida ou for avatar.png, NÃO entra na disputa
       if (!fotoFinal || String(fotoFinal).trim() === '' || String(fotoFinal).includes('avatar.png')) {
         return [];
       }
@@ -139,36 +142,33 @@ export default function DueloClient() {
       );
 
       const candidaturaReferencia = candidaturaEstadualOuNacional || candidaturaMaisRecente;
+      const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaMaisRecente.cargo || '').toUpperCase().trim());
 
-      // DENTRO de processCandidaturas:
-        const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaMaisRecente.cargo || '').toUpperCase().trim());
-
-        return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score ?? 1200,
-          matches_count: perfil.matches_count ?? 0,
-          nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
-          partido: candidaturaMaisRecente.partido || 'S/P',
-          cargo: candidaturaMaisRecente.cargo,
-          // Mantém 'BR' se o cargo for de Presidente/Vice-Presidente
-          uf: isNacional ? 'BR' : (candidaturaReferencia.uf || perfil.uf),
-          municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
-            ? '' 
-            : candidaturaReferencia.municipio,
+      return [{
+        id: perfil.id,
+        nome_completo: perfil.nome_completo,
+        cpf: perfil.cpf,
+        titulo_eleitoral: perfil.titulo_eleitoral,
+        created_at: perfil.created_at,
+        elo_score: perfil.elo_score ?? 1200,
+        matches_count: perfil.matches_count ?? 0,
+        nome_urna: candidaturaMaisRecente.nome_urna || perfil.nome_completo,
+        partido: candidaturaMaisRecente.partido || 'S/P',
+        cargo: candidaturaMaisRecente.cargo,
+        uf: isNacional ? 'BR' : (candidaturaReferencia.uf || perfil.uf),
+        municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaReferencia.cargo || '').toUpperCase().trim())
+          ? '' 
+          : candidaturaReferencia.municipio,
+        foto: fotoFinal,
+        candidaturas: sortedCands,
+        ultima_candidatura: {
+          ...candidaturaMaisRecente,
           foto: fotoFinal,
-          candidaturas: sortedCands,
-          ultima_candidatura: {
-            ...candidaturaMaisRecente,
-            foto: fotoFinal,
-            perfil_id: perfil.id,
-            created_at: perfil.created_at,
-            sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
-          },
-        }];
+          perfil_id: perfil.id,
+          created_at: perfil.created_at,
+          sq_candidato: Number(candidaturaMaisRecente.sq_candidato) || 0,
+        },
+      }];
     });
   };
 
@@ -179,42 +179,37 @@ export default function DueloClient() {
   };
 
   const filteredCandidates = useMemo(() => {
-      if (isSharedDuel) return candidates;
+    if (isSharedDuel) return candidates;
 
-      const cargosPermitidos = getCargosPorEscopo();
+    const cargosPermitidos = getCargosPorEscopo();
 
-      return candidates
-        .filter((candidate) => {
-          const cargoCandidato = (
-            candidate.ultima_candidatura?.cargo || 
-            candidate.cargo || 
-            ''
-          ).toUpperCase().trim();
+    return candidates
+      .filter((candidate) => {
+        const cargoCandidato = (
+          candidate.ultima_candidatura?.cargo || 
+          candidate.cargo || 
+          ''
+        ).toUpperCase().trim();
 
-          // 🛑 REGRA 1: Filtro BR estrito (somente candidatos nacionais com UF = 'BR')
-          if (selectedUf === 'BR') {
-            return candidate.uf === 'BR' && CARGOS_POR_ESCOPO.nacional.includes(cargoCandidato);
-          }
+        if (selectedUf === 'BR') {
+          return candidate.uf === 'BR' && CARGOS_POR_ESCOPO.nacional.includes(cargoCandidato);
+        }
 
-          // 🛑 REGRA 2: Filtro Estadual/Municipal
-          if (candidate.uf !== selectedUf) return false;
+        if (candidate.uf !== selectedUf) return false;
 
-          if (selectedMunicipio) {
-            // Se selecionou município, só permite candidatos daquele município específico
-            if (candidate.municipio !== selectedMunicipio) return false;
-          } else {
-            // Se NÃO selecionou município (apenas UF), ignora candidatos estritamente municipais
-            if (CARGOS_POR_ESCOPO.municipal.includes(cargoCandidato)) return false;
-          }
+        if (selectedMunicipio) {
+          if (candidate.municipio !== selectedMunicipio) return false;
+        } else {
+          if (CARGOS_POR_ESCOPO.municipal.includes(cargoCandidato)) return false;
+        }
 
-          return cargosPermitidos.some(
-            (c) => c.toUpperCase().trim() === cargoCandidato
-          );
-        })
-        .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
-    }, [candidates, isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo]);
+        return cargosPermitidos.some(
+          (c) => c.toUpperCase().trim() === cargoCandidato
+        );
+      })
+      .sort((a, b) => getCandidateLabel(a).localeCompare(getCandidateLabel(b), 'pt-BR'));
+  }, [candidates, isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
-      // Sorteia candidatos
   const randomizeMatch = useCallback((poolList = filteredCandidates) => {
     if (poolList.length < 2) {
       setC1(poolList[0] || null);
@@ -226,21 +221,19 @@ export default function DueloClient() {
     setC2(shuffled[1]);
   }, [filteredCandidates]);
 
-  // Carregamento dos dados
+  // 3️⃣ Carregamento dos dados 100% via VPS
   const loadData = useCallback(async () => {
     setLoadingCandidates(true);
     try {
+      // 🟢 CASO 1: DUELO COMPARTILHADO VIA VPS
       if (isSharedDuel) {
-        const { data: perfisData, error } = await supabase
-          .from('perfis_candidatos')
-          .select('*')
-          .in('id', [sharedC1Id!, sharedC2Id!]);
-
-        if (error || !perfisData) {
+        const responsePerfis = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${sharedC1Id},${sharedC2Id}`);
+        if (!responsePerfis.ok) {
           setCandidates([]);
           setLoadingCandidates(false);
           return;
         }
+        const perfisData = await responsePerfis.json();
 
         const candidaturas = (await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!])) || [];
         const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
@@ -255,6 +248,7 @@ export default function DueloClient() {
         return;
       }
 
+      // 🟢 CASO 2: BUSCA DE CANDIDATOS PARA DUELO NORMAL VIA VPS
       const cargos = getCargosPorEscopo();
       const queryParams = new URLSearchParams();
       queryParams.append('uf', selectedUf);
@@ -263,6 +257,7 @@ export default function DueloClient() {
         queryParams.append('municipio', selectedMunicipio);
       }
 
+      // Requisição à VPS
       const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
       if (!response.ok) {
         setCandidates([]);
@@ -272,8 +267,8 @@ export default function DueloClient() {
         return;
       }
 
-      const perfilIdsVps: string[] = await response.json();
-      if (!perfilIdsVps || perfilIdsVps.length === 0) {
+      const perfisVps: any[] = await response.json(); // Espera-se que a VPS retorne a lista de objetos dos perfis
+      if (!perfisVps || perfisVps.length === 0) {
         setCandidates([]);
         setC1(null);
         setC2(null);
@@ -281,26 +276,10 @@ export default function DueloClient() {
         return;
       }
 
-      const idsEmbaralhados = [...perfilIdsVps].sort(() => Math.random() - 0.5);
-      const idsAmostra = idsEmbaralhados.slice(0, 300);
-
-      const { data: perfisData, error } = await supabase
-        .from('perfis_candidatos')
-        .select('*')
-        .in('id', idsAmostra);
-
-      if (error || !perfisData || perfisData.length === 0) {
-        setCandidates([]);
-        setC1(null);
-        setC2(null);
-        setLoadingCandidates(false);
-        return;
-      }
-
-      const perfilIds = perfisData.map((p: any) => p.id);
+      const perfilIds = perfisVps.map((p: any) => p.id);
       const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 
-      const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
+      const mappedDataFinal = processCandidaturas(perfisVps, candidaturas as any[]);
       setCandidates(mappedDataFinal);
 
       if (mappedDataFinal.length >= 2) {
@@ -338,43 +317,36 @@ export default function DueloClient() {
   };
 
   const getRankingUrl = (candidate: Candidato) => {
-      const candidateUf = candidate.uf || candidate.ultima_candidatura?.uf || 'BR';
-      const candidateMunicipio = candidate.municipio || candidate.ultima_candidatura?.municipio;
-
-      // 1. SE O DUELO FOI NACIONAL (BR)
-      if (selectedUf === 'BR') {
-        const params = new URLSearchParams({
-          uf: 'BR',
-          escopo: 'nacional',
-          highlight: candidate.id,
-        });
-        return `/ranking?${params.toString()}`;
-      }
-
-      // 2. SE O DUELO FOI EM UM MUNICÍPIO ESPECÍFICO
-      if (selectedMunicipio) {
-        const params = new URLSearchParams({
-          uf: selectedUf,
-          municipio: selectedMunicipio,
-          escopo: 'municipal',
-          highlight: candidate.id,
-        });
-        return `/ranking?${params.toString()}`;
-      }
-
-      // 3. SE O DUELO FOI ESTADUAL (selectedUf != 'BR' e sem município selecionado)
-      // Força o escopo ESTADUAL para garantir que mesmo candidatos que foram Vereadores entrem no ranking do estado
+    if (selectedUf === 'BR') {
       const params = new URLSearchParams({
-        uf: selectedUf,
-        escopo: 'estadual',
+        uf: 'BR',
+        escopo: 'nacional',
         highlight: candidate.id,
       });
-
       return `/ranking?${params.toString()}`;
-    };
+    }
+
+    if (selectedMunicipio) {
+      const params = new URLSearchParams({
+        uf: selectedUf,
+        municipio: selectedMunicipio,
+        escopo: 'municipal',
+        highlight: candidate.id,
+      });
+      return `/ranking?${params.toString()}`;
+    }
+
+    const params = new URLSearchParams({
+      uf: selectedUf,
+      escopo: 'estadual',
+      highlight: candidate.id,
+    });
+
+    return `/ranking?${params.toString()}`;
+  };
 
   const escolher = async (escolhido: Candidato, outro: Candidato) => {
-    if (submitting || !isSharedDuel) return; // Só permite votar no link de duelo aberto
+    if (submitting || !isSharedDuel) return;
     setSubmitting(true);
     setFeedback('');
     try {
@@ -408,7 +380,16 @@ export default function DueloClient() {
 
   const handleShare = () => {
     if (!c1 || !c2) return;
-    const params = new URLSearchParams({ uf: selectedUf, c1: c1.id, c2: c2.id });
+    const params = new URLSearchParams({ 
+      uf: selectedUf, 
+      c1: c1.id, 
+      c2: c2.id 
+    });
+
+    if (selectedMunicipio) {
+      params.set('municipio', selectedMunicipio);
+    }
+
     const shareUrl = `${window.location.origin}/duelo?${params.toString()}`;
     navigator.clipboard.writeText(shareUrl);
     alert('Link copiado para compartilhar seu duelo!');
@@ -549,7 +530,13 @@ export default function DueloClient() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.24em] text-slate-400">UF / Município</p>
-                      <p className="mt-1 text-sm text-slate-200">{candidate.uf} · {candidate.municipio || 'Estadual/Nacional'}</p>
+                      <p className="mt-1 text-sm text-slate-200">
+                        {candidate.uf === 'BR' 
+                          ? 'Brasil' 
+                          : candidate.municipio 
+                            ? `${candidate.municipio} (${candidate.uf})` 
+                            : candidate.uf}
+                      </p>
                     </div>
                     <div className="rounded-3xl bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-300">
                       Elo {candidate.elo_score}

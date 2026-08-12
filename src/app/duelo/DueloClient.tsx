@@ -12,6 +12,7 @@ const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
   estadual: [
     'DEPUTADO ESTADUAL',
+    'DEPUTADO DISTRITAL', // 👈 Adicionado para DF
     'DEPUTADO FEDERAL',
     'GOVERNADOR',
     'VICE-GOVERNADOR',
@@ -58,14 +59,12 @@ export default function DueloClient() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  // 1️⃣ Hydration & Sincronização dos parâmetros da URL
   useEffect(() => {
     setIsMounted(true);
     if (sharedUf) setSelectedUf(sharedUf);
     if (sharedMunicipio) setSelectedMunicipio(sharedMunicipio);
   }, [sharedUf, sharedMunicipio]);
 
-  // 2️⃣ Busca de municípios por UF (via VPS)
   useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
@@ -77,7 +76,6 @@ export default function DueloClient() {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
         if (!response.ok) {
-          console.error("Falha ao buscar municípios do VPS");
           setMunicipios([]);
           return;
         }
@@ -221,22 +219,21 @@ export default function DueloClient() {
     setC2(shuffled[1]);
   }, [filteredCandidates]);
 
-  // 3️⃣ Carregamento dos dados 100% via VPS
+  // 🔄 CARREGAMENTO CORRIGIDO E HÍBRIDO DA VPS
   const loadData = useCallback(async () => {
     setLoadingCandidates(true);
     try {
-      // 🟢 CASO 1: DUELO COMPARTILHADO VIA VPS
       if (isSharedDuel) {
-        const responsePerfis = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${sharedC1Id},${sharedC2Id}`);
-        if (!responsePerfis.ok) {
+        const resPerfis = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${sharedC1Id},${sharedC2Id}`);
+        if (!resPerfis.ok) {
           setCandidates([]);
           setLoadingCandidates(false);
           return;
         }
-        const perfisData = await responsePerfis.json();
-
+        const perfisData = await resPerfis.json();
         const candidaturas = (await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!])) || [];
         const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
+        
         setCandidates(mappedDataFinal);
         setC1(mappedDataFinal.find(c => c.id === sharedC1Id) || mappedDataFinal[0] || null);
         setC2(mappedDataFinal.find(c => c.id === sharedC2Id) || mappedDataFinal[1] || null);
@@ -248,7 +245,7 @@ export default function DueloClient() {
         return;
       }
 
-      // 🟢 CASO 2: BUSCA DE CANDIDATOS PARA DUELO NORMAL VIA VPS
+      // Busca IDs dos candidatos filtrados da VPS
       const cargos = getCargosPorEscopo();
       const queryParams = new URLSearchParams();
       queryParams.append('uf', selectedUf);
@@ -257,7 +254,6 @@ export default function DueloClient() {
         queryParams.append('municipio', selectedMunicipio);
       }
 
-      // Requisição à VPS
       const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
       if (!response.ok) {
         setCandidates([]);
@@ -267,8 +263,8 @@ export default function DueloClient() {
         return;
       }
 
-      const perfisVps: any[] = await response.json(); // Espera-se que a VPS retorne a lista de objetos dos perfis
-      if (!perfisVps || perfisVps.length === 0) {
+      const dataVps = await response.json();
+      if (!dataVps || dataVps.length === 0) {
         setCandidates([]);
         setC1(null);
         setC2(null);
@@ -276,10 +272,27 @@ export default function DueloClient() {
         return;
       }
 
-      const perfilIds = perfisVps.map((p: any) => p.id);
+      // Garante extração de IDs (suporta se retornar array de IDs ou array de Objetos)
+      const perfilIdsVps: string[] = dataVps.map((item: any) => typeof item === 'string' ? item : item.id);
+
+      const idsEmbaralhados = [...perfilIdsVps].sort(() => Math.random() - 0.5);
+      const idsAmostra = idsEmbaralhados.slice(0, 300);
+
+      // Busca os objetos completos dos perfis via VPS
+      const resPerfis = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${idsAmostra.join(',')}`);
+      if (!resPerfis.ok) {
+        setCandidates([]);
+        setC1(null);
+        setC2(null);
+        setLoadingCandidates(false);
+        return;
+      }
+      const perfisData = await resPerfis.json();
+
+      const perfilIds = perfisData.map((p: any) => p.id);
       const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 
-      const mappedDataFinal = processCandidaturas(perfisVps, candidaturas as any[]);
+      const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
       setCandidates(mappedDataFinal);
 
       if (mappedDataFinal.length >= 2) {

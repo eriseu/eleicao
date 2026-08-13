@@ -58,7 +58,6 @@ export default function DueloClient() {
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
-  const [shareLink, setShareLink] = useState('');
 
   useEffect(() => {
     setIsMounted(true);
@@ -382,19 +381,32 @@ export default function DueloClient() {
   };
 
     const getRankingUrl = (candidate: Candidato) => {
+      if (selectedUf === 'BR') {
+        const params = new URLSearchParams({
+          uf: 'BR',
+          escopo: 'nacional',
+          highlight: candidate.id,
+        });
+        return `/ranking?${params.toString()}`;
+      }
+
+      if (selectedMunicipio) {
+        const params = new URLSearchParams({
+          uf: selectedUf,
+          municipio: selectedMunicipio,
+          escopo: 'municipal',
+          highlight: candidate.id,
+        });
+        return `/ranking?${params.toString()}`;
+      }
+
+      // 💡 AJUSTE AQUI: Para garantir que qualquer candidato de MT (federal, estadual ou municipal)
+      // seja renderizado e possa receber o highlight
       const params = new URLSearchParams({
         uf: selectedUf,
+        escopo: 'todos', // Altere de 'estadual' para 'todos'
         highlight: candidate.id,
       });
-
-      if (selectedUf !== 'BR' && selectedMunicipio) {
-        params.set('municipio', selectedMunicipio);
-        params.set('escopo', 'municipal');
-      } else if (selectedUf !== 'BR') {
-        params.set('escopo', 'estadual');
-      } else {
-        params.set('escopo', 'nacional');
-      }
 
       return `/ranking?${params.toString()}`;
     };
@@ -432,28 +444,21 @@ export default function DueloClient() {
     }
   };
 
-  const handleShare = async () => {
+  const handleShare = () => {
     if (!c1 || !c2) return;
-    const params = new URLSearchParams({
-      uf: selectedUf,
-      c1: c1.id,
-      c2: c2.id,
+    const params = new URLSearchParams({ 
+      uf: selectedUf, 
+      c1: c1.id, 
+      c2: c2.id 
     });
 
-    if (selectedUf !== 'BR' && selectedMunicipio) {
+    if (selectedMunicipio) {
       params.set('municipio', selectedMunicipio);
     }
 
     const shareUrl = `${window.location.origin}/duelo?${params.toString()}`;
-    setShareLink(shareUrl);
-
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      alert('Link copiado para compartilhar seu duelo!');
-    } catch (error) {
-      console.error('Erro ao copiar link do duelo:', error);
-      alert('Link gerado abaixo para copiar manualmente.');
-    }
+    navigator.clipboard.writeText(shareUrl);
+    alert('Link copiado para compartilhar seu duelo!');
   };
 
   if (!isMounted) {
@@ -615,32 +620,14 @@ export default function DueloClient() {
         {feedback && <p className="mt-6 text-center text-sm text-emerald-300">{feedback}</p>}
 
         {!isSharedDuel && (
-          <>
-            <button
-              type="button"
-              onClick={handleShare}
-              disabled={!c1 || !c2}
-              className="mt-6 w-full rounded-3xl bg-indigo-600 px-5 py-4 text-sm font-semibold text-white shadow-xl shadow-indigo-600/20 transition hover:bg-indigo-500 disabled:opacity-50"
-            >
-              Compartilhar Duelo 🔗
-            </button>
-
-            {shareLink && (
-              <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/80 p-3 text-left">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">
-                  Link do duelo
-                </p>
-                <a
-                  href={shareLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="break-all text-xs text-emerald-300 underline decoration-emerald-400/70 underline-offset-4"
-                >
-                  {shareLink}
-                </a>
-              </div>
-            )}
-          </>
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={!c1 || !c2}
+            className="mt-6 w-full rounded-3xl bg-indigo-600 px-5 py-4 text-sm font-semibold text-white shadow-xl shadow-indigo-600/20 transition hover:bg-indigo-500 disabled:opacity-50"
+          >
+            Compartilhar Duelo 🔗
+          </button>
         )}
       </div>
     </main>

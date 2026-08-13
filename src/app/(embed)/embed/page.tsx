@@ -2,18 +2,17 @@
 
 import Script from 'next/script';
 import Head from 'next/head';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import CandidateImage from '@/components/ui/CandidateImage';
+import { supabase } from '@/lib/supabaseClient';
 import type { Candidato } from '@/types';
 
 export default function PlacarEleicaoEmbedPage() {
   const GA_TRACKING_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-R37SS5PQDM';
-  const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://vps-api.centraleti.com.br';
 
-  const [candidatesList, setCandidatesList] = useState<Candidato[]>([]);
+  const [allCandidates, setAllCandidates] = useState<Candidato[]>([]);
   const [selectedCandidateA, setSelectedCandidateA] = useState<Candidato | null>(null);
   const [selectedCandidateB, setSelectedCandidateB] = useState<Candidato | null>(null);
-  const [rankingList, setRankingList] = useState<Candidato[]>([]);
   const [selectedUF, setSelectedUF] = useState('BR');
   const [loading, setLoading] = useState(true);
   const [municipios, setMunicipios] = useState<string[]>([]);
@@ -21,63 +20,100 @@ export default function PlacarEleicaoEmbedPage() {
 
   const AVAILABLE_UFS = ['BR', 'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
-  // Carregar candidatos do R2
-  const loadCandidates = useCallback(async (uf: string) => {
+  // Carregar candidatos do R2 e elo_score do Supabase
+  const loadCandidatesFromR2 = useCallback(async (uf: string) => {
     try {
       setLoading(true);
       const response = await fetch(`https://fotos.centraleti.com.br/candidatos/${uf}.json`);
       
       if (!response.ok) {
-        setCandidatesList([]);
+        setAllCandidates([]);
         return;
       }
 
-      const data: Candidato[] = await response.json();
-      setCandidatesList(data);
-
-      // Pega o ranking dos candidatos
-      const rankingResp = await fetch(`${VPS_API_URL}/api/candidatos-filtrados?uf=${uf}&limit=30`);
-      if (rankingResp.ok) {
-        const rankingData = await rankingResp.json();
-        setRankingList(rankingData || []);
+      const data: any[] = await response.json();
+      
+      // Extrair IDs para buscar elo_score no Supabase
+      const candidatoIds = data.map((item: any) => item.id || item.sq_candidato?.toString() || '').filter(Boolean);
+      
+      // Buscar elo_score do Supabase
+      let eloScoreMap: Record<string, number> = {};
+      if (candidatoIds.length > 0) {
+        try {
+          const { data: perfisData } = await supabase
+            .from('perfis_candidatos')
+            .select('id, elo_score, matches_count')
+            .in('id', candidatoIds);
+          
+          if (perfisData) {
+            perfisData.forEach((perfil: any) => {
+              eloScoreMap[perfil.id] = perfil.elo_score || 1200;
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao buscar elo_score do Supabase:', error);
+        }
       }
+      
+      // Mapear dados do R2 para tipo Candidato, mesclando com elo_score do Supabase
+      const candidatos: Candidato[] = data.map((item: any) => {
+        const candidatoId = item.id || item.sq_candidato?.toString() || '';
+        return {
+          id: candidatoId,
+          cpf: item.cpf || '',
+          titulo_eleitoral: item.titulo_eleitoral || '',
+          nome_completo: item.nome_completo || '',
+          elo_score: eloScoreMap[candidatoId] || item.elo_score || 1200,
+          matches_count: item.matches_count || 0,
+          created_at: item.created_at || new Date().toISOString(),
+          nome_urna: item.nome_urna || item.nome_completo || '',
+          partido: item.partido || item.sg_partido || 'S/P',
+          cargo: item.cargo || '',
+          uf: item.uf || uf,
+          municipio: item.municipio || '',
+          foto: item.foto || item.sq_candidato?.toString() || '',
+          ano_eleicao: item.ano_eleicao || new Date().getFullYear(),
+        };
+      });
+
+      setAllCandidates(candidatos);
+      
+      // Extrair municípios únicos do JSON
+      const uniqueMunicipios = Array.from(
+        new Set(
+          candidatos
+            .map(c => c.municipio?.trim())
+            .filter((m: string | undefined | null): m is string => Boolean(m) && m?.toUpperCase() !== uf.toUpperCase())
+        )
+      ).sort() as string[];
+      
+      setMunicipios(uniqueMunicipios);
+      setSelectedMunicipio('');
     } catch (error) {
-      console.error('Erro ao carregar candidatos:', error);
-      setCandidatesList([]);
+      console.error('Erro ao carregar candidatos do R2:', error);
+      setAllCandidates([]);
+      setMunicipios([]);
     } finally {
       setLoading(false);
     }
-  }, [VPS_API_URL]);
+  }, []);
 
-  // Carregar municípios quando UF mudar
+  // Recarregar quando UF mudar
   useEffect(() => {
-    if (selectedUF === 'BR') {
-      setMunicipios([]);
-      setSelectedMunicipio('');
-      loadCandidates('BR');
-      return;
+    loadCandidatesFromR2(selectedUF);
+  }, [selectedUF, loadCandidatesFromR2]);
+
+  // Filtrar candidatos por municipio (se selecionado)
+  const filteredCandidates = useMemo(() => {
+    let filtered = allCandidates;
+    
+    if (selectedMunicipio) {
+      filtered = filtered.filter(c => c.municipio?.toUpperCase() === selectedMunicipio.toUpperCase());
     }
 
-    const loadMunicipios = async () => {
-      try {
-        const response = await fetch(`${VPS_API_URL}/api/municipios?uf=${selectedUF}`);
-        if (response.ok) {
-          const data = await response.json();
-          const uniqueMunicipios = Array.from(
-            new Set((data || [])
-              .map((item: any) => (typeof item === 'string' ? item : item.municipio)?.trim())
-              .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUF.toUpperCase()))
-          ).sort() as string[];
-          setMunicipios(uniqueMunicipios);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar municípios:', error);
-      }
-    };
-
-    loadMunicipios();
-    loadCandidates(selectedUF);
-  }, [selectedUF, VPS_API_URL, loadCandidates]);
+    // Ordenar por elo_score (descendente)
+    return filtered.sort((a, b) => (b.elo_score || 1200) - (a.elo_score || 1200));
+  }, [allCandidates, selectedMunicipio]);
 
   // Votar em um candidato
   const votarEmCandidato = async (vencedorId: string, perdedorId: string) => {
@@ -96,17 +132,6 @@ export default function PlacarEleicaoEmbedPage() {
           winner_id: vencedorId,
           loser_id: perdedorId,
         });
-
-        // Recarregar ranking
-        try {
-          const rankingResp = await fetch(`${VPS_API_URL}/api/candidatos-filtrados?uf=${selectedUF}&limit=30`);
-          if (rankingResp.ok) {
-            const rankingData = await rankingResp.json();
-            setRankingList(rankingData || []);
-          }
-        } catch (error) {
-          console.error('Erro ao recarregar ranking:', error);
-        }
       }
     } catch (error) {
       console.error('Erro ao votar:', error);
@@ -193,7 +218,7 @@ export default function PlacarEleicaoEmbedPage() {
               <select
                 value={selectedCandidateA?.id || ''}
                 onChange={(e) => {
-                  const cand = candidatesList.find(c => c.id === e.target.value);
+                  const cand = filteredCandidates.find(c => c.id === e.target.value);
                   setSelectedCandidateA(cand || null);
                   if (cand) {
                     (window as any).trackWidgetEvent?.('select_candidate_duel', {
@@ -205,7 +230,7 @@ export default function PlacarEleicaoEmbedPage() {
                 className="w-full p-2 rounded bg-slate-700 text-white"
               >
                 <option value="">Selecione o 1º candidato</option>
-                {candidatesList.map((cand) => (
+                {filteredCandidates.map((cand) => (
                   <option key={cand.id} value={cand.id}>
                     {cand.nome_urna || cand.nome_completo} - {cand.cargo}
                   </option>
@@ -218,7 +243,7 @@ export default function PlacarEleicaoEmbedPage() {
               <select
                 value={selectedCandidateB?.id || ''}
                 onChange={(e) => {
-                  const cand = candidatesList.find(c => c.id === e.target.value);
+                  const cand = filteredCandidates.find(c => c.id === e.target.value);
                   setSelectedCandidateB(cand || null);
                   if (cand) {
                     (window as any).trackWidgetEvent?.('select_candidate_duel', {
@@ -230,7 +255,7 @@ export default function PlacarEleicaoEmbedPage() {
                 className="w-full p-2 rounded bg-slate-700 text-white"
               >
                 <option value="">Selecione o 2º candidato</option>
-                {candidatesList.map((cand) => (
+                {filteredCandidates.map((cand) => (
                   <option key={cand.id} value={cand.id}>
                     {cand.nome_urna || cand.nome_completo} - {cand.cargo}
                   </option>
@@ -254,7 +279,8 @@ export default function PlacarEleicaoEmbedPage() {
                     />
                   </div>
                   <h3 className="font-bold text-lg mb-2">{selectedCandidateA.nome_urna || selectedCandidateA.nome_completo}</h3>
-                  <p className="text-sm mb-4">{selectedCandidateA.cargo}</p>
+                  <p className="text-sm mb-2">{selectedCandidateA.cargo}</p>
+                  {selectedCandidateA.partido && <p className="text-sm text-slate-300 mb-4">{selectedCandidateA.partido}</p>}
                   <button
                     onClick={() => votarEmCandidato(selectedCandidateA.id, selectedCandidateB.id)}
                     className="w-full px-4 py-2 bg-green-600 rounded hover:bg-green-700 font-bold"
@@ -273,7 +299,8 @@ export default function PlacarEleicaoEmbedPage() {
                     />
                   </div>
                   <h3 className="font-bold text-lg mb-2">{selectedCandidateB.nome_urna || selectedCandidateB.nome_completo}</h3>
-                  <p className="text-sm mb-4">{selectedCandidateB.cargo}</p>
+                  <p className="text-sm mb-2">{selectedCandidateB.cargo}</p>
+                  {selectedCandidateB.partido && <p className="text-sm text-slate-300 mb-4">{selectedCandidateB.partido}</p>}
                   <button
                     onClick={() => votarEmCandidato(selectedCandidateB.id, selectedCandidateA.id)}
                     className="w-full px-4 py-2 bg-green-600 rounded hover:bg-green-700 font-bold"
@@ -310,9 +337,9 @@ export default function PlacarEleicaoEmbedPage() {
           <div className="ranking-results">
             {loading ? (
               <p className="text-center">Carregando ranking...</p>
-            ) : rankingList.length > 0 ? (
+            ) : filteredCandidates.length > 0 ? (
               <div className="space-y-2">
-                {rankingList.map((cand, idx) => (
+                {filteredCandidates.slice(0, 30).map((cand, idx) => (
                   <div key={cand.id} className="flex items-center gap-4 p-3 bg-slate-700 rounded">
                     <div className="font-bold text-lg text-blue-400 w-8">#{idx + 1}</div>
                     <div className="w-16 h-16 rounded overflow-hidden bg-slate-600">
@@ -325,6 +352,7 @@ export default function PlacarEleicaoEmbedPage() {
                     <div className="flex-1">
                       <h4 className="font-bold">{cand.nome_urna || cand.nome_completo}</h4>
                       <p className="text-sm text-slate-300">{cand.cargo}</p>
+                      {cand.partido && <p className="text-sm text-slate-400">{cand.partido}</p>}
                       {cand.elo_score && <p className="text-sm text-yellow-400">Elo: {Math.round(cand.elo_score)}</p>}
                     </div>
                   </div>

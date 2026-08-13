@@ -12,7 +12,7 @@ function cleanFotoPath(foto: string): string {
 }
 
 /**
- * Gera a fila de URLs para a foto do candidato utilizando o VPS.
+ * Gera a fila de URLs para a foto do candidato utilizando a estrutura do VPS.
  */
 export function getPhotoUrls(candidato: Candidato): string[] {
   const { nome_completo, ultima_candidatura } = candidato;
@@ -22,16 +22,21 @@ export function getPhotoUrls(candidato: Candidato): string[] {
 
   // Dados da candidatura (no objeto filho ou achatado)
   const candidatura = ultima_candidatura || (candidato as any);
+  
+  const ano = candidatura.ano_eleicao || (candidato as any).ano;
+  const uf = candidatura.uf || (candidato as any).uf;
   const rawFoto = candidatura.foto || (candidato as any).foto;
 
-  // Se houver URL base da VPS e o campo foto preenchido
-  if (vpsBase && rawFoto) {
+  // Se houver URL base da VPS, ano, UF e o campo foto preenchido
+  if (vpsBase && rawFoto && ano && uf) {
     const fotoLimpa = cleanFotoPath(rawFoto);
-    const fotoPath = fotoLimpa.startsWith('/') ? fotoLimpa : `/${fotoLimpa}`;
-    urls.push(`${vpsBase}${fotoPath}`);
+    const ufUpper = uf.toUpperCase();
+
+    // Composição no formato: {vpsBase}/{ano}/{UF}/{nome_da_foto.jpg}
+    urls.push(`${vpsBase}/${ano}/${ufUpper}/${fotoLimpa}`);
   } else {
     console.warn(
-      `%c[imageFallback] ${nome_completo} não possui foto cadastrada ou NEXT_PUBLIC_VPS_URL não definida. Usando avatar padrão.`,
+      `%c[imageFallback] ${nome_completo} não possui dados completos (VPS/Foto/Ano/UF). Usando avatar padrão.`,
       'color: #ff9800;'
     );
   }

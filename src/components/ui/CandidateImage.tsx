@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getPhotoUrls } from '@/utils/getPhotoUrls'; // Ajuste o caminho conforme seu projeto
+import { getPhotoUrls } from '@/utils/imageFallback'; // Ajuste o caminho conforme seu projeto
 
 interface CandidateImageProps {
   candidato: any;

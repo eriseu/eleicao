@@ -36,6 +36,8 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       alt={alt || "Foto do candidato"}
       className={className}
       onError={handleError}
+      referrerPolicy="no-referrer"
+      crossOrigin="anonymous"
     />
   );
 }

@@ -13,9 +13,10 @@ export default function AdSenseLoader() {
 
   return (
     <Script
-      async
+      id="adsense-init"
       src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566"
       crossOrigin="anonymous"
+      strategy="afterInteractive"
     />
   );
 }

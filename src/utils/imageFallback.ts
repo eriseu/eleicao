@@ -1,37 +1,43 @@
 import { Candidato } from '@/types';
 
 /**
- * Gera a fila de URLs para a foto do candidato utilizando o VPS (incluindo histórico se a foto principal falhar).
+ * Limpa o nome da foto removendo o prefixo do arquivo ZIP se presente.
+ * Exemplo: "foto_cand2026_ES_div.zip/FES80002531645_div.jpg" -> "FES80002531645_div.jpg"
+ */
+function cleanFotoPath(foto: string): string {
+  if (foto.includes('.zip/')) {
+    return foto.split('.zip/')[1];
+  }
+  return foto;
+}
+
+/**
+ * Gera a fila de URLs para a foto do candidato utilizando o VPS.
  */
 export function getPhotoUrls(candidato: Candidato): string[] {
-  const vpsBase = process.env.NEXT_PUBLIC_VPS_URL || 'https://f.centraleti.com.br/f';
+  const { nome_completo, ultima_candidatura } = candidato;
+  const vpsBase = process.env.NEXT_PUBLIC_VPS_URL;
+
   const urls: string[] = [];
 
-  // Junta candidatura principal e histórico
-  const historicoGeral = [
-    candidato.ultima_candidatura,
-    candidato,
-    ...((candidato as any).candidaturas || []),
-    ...((candidato as any).historico || [])
-  ].filter(Boolean);
+  // Dados da candidatura (no objeto filho ou achatado)
+  const candidatura = ultima_candidatura || (candidato as any);
+  const rawFoto = candidatura.foto || (candidato as any).foto;
 
-  historicoGeral.forEach((cand: any) => {
-    const foto = cand.foto;
-    if (!foto || foto === 'avatar.png' || foto === 'avatar') return;
+  // Se houver URL base da VPS e o campo foto preenchido
+  if (vpsBase && rawFoto) {
+    const fotoLimpa = cleanFotoPath(rawFoto);
+    const fotoPath = fotoLimpa.startsWith('/') ? fotoLimpa : `/${fotoLimpa}`;
+    urls.push(`${vpsBase}${fotoPath}`);
+  } else {
+    console.warn(
+      `%c[imageFallback] ${nome_completo} não possui foto cadastrada ou NEXT_PUBLIC_VPS_URL não definida. Usando avatar padrão.`,
+      'color: #ff9800;'
+    );
+  }
 
-    if (foto.startsWith('http')) {
-      urls.push(foto);
-    } else if (vpsBase) {
-      const fotoPath = foto.startsWith('/') ? foto : `/${foto}`;
-      urls.push(`${vpsBase}${fotoPath}`);
-    }
-  });
+  // Fallback final: Avatar padrão local
+  urls.push('/avatar.png');
 
-  // Remove URLs duplicadas
-  const uniqueUrls = Array.from(new Set(urls));
-
-  // Fallback final
-  uniqueUrls.push('/avatar.png');
-
-  return uniqueUrls;
+  return urls;
 }

@@ -1,28 +1,8 @@
 import { Candidato } from '@/types';
 
-/**
- * Limpa o nome da foto removendo o prefixo ZIP se presente.
- */
 function cleanFotoPath(foto: string): string {
-  return foto.includes('.zip/') ? foto.split('.zip/')[1].trim() : foto.trim();
-}
-
-/**
- * Extrai a UF do nome do arquivo padrão TSE (ex: "FSP250..." -> "SP", "BR2800..." -> "BR").
- */
-function getUfFromFileName(fileName: string): string | null {
-  if (fileName.length >= 3) {
-    // Caso seja foto nacional (ex: BR2800...)
-    if (fileName.startsWith('BR')) {
-      return 'BR';
-    }
-    // Caso seja foto estadual (ex: FSP..., FRS...)
-    if (fileName[0] === 'F') {
-      const uf = fileName.slice(1, 3).toUpperCase();
-      if (uf >= 'AA' && uf <= 'ZZ') return uf;
-    }
-  }
-  return null;
+  const path = foto.includes('.zip/') ? foto.split('.zip/')[1] : foto;
+  return path.trim();
 }
 
 export function getPhotoUrls(candidato: Candidato): string[] {
@@ -44,21 +24,40 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   }
 
   const fotoLimpa = cleanFotoPath(rawFoto);
-  
-  // Agora detecta tanto 'BR' quanto UFs estaduais via arquivo ou rawUf
-  const ufEfetiva = getUfFromFileName(fotoLimpa) || rawUf || 'BR';
+  const upperFoto = fotoLimpa.toUpperCase();
 
-  if (ufEfetiva) {
-    const rawUrl = `${vpsBase}/${ano}/${ufEfetiva}/${fotoLimpa}`;
-    const urlMontada = encodeURI(rawUrl);
-    
-    console.log(`[Foto Gerada] ${nomeCandidato} -> ${urlMontada}`);
-
-    return [
-      urlMontada,
-      '/avatar.png'
-    ];
+  // 1. Extrai a UF do nome do arquivo
+  let ufExtraida: string | null = null;
+  if (upperFoto.startsWith('FBR') || upperFoto.startsWith('BR')) {
+    ufExtraida = 'BR';
+  } else if (upperFoto.startsWith('F') && upperFoto.length >= 3) {
+    const possivelUf = upperFoto.slice(1, 3);
+    if (possivelUf >= 'AA' && possivelUf <= 'ZZ') {
+      ufExtraida = possivelUf;
+    }
   }
 
-  return ['/avatar.png'];
+  const urls: string[] = [];
+
+  // Tenta com a UF extraída do arquivo
+  if (ufExtraida) {
+    urls.push(encodeURI(`${vpsBase}/${ano}/${ufExtraida}/${fotoLimpa}`));
+  }
+
+  // Tenta com a UF cadastrada no objeto (se for diferente da extraída)
+  if (rawUf && rawUf !== ufExtraida) {
+    urls.push(encodeURI(`${vpsBase}/${ano}/${rawUf}/${fotoLimpa}`));
+  }
+
+  // Se nada funcionou até aqui e ainda não tentou BR, adiciona pasta BR
+  if (ufExtraida !== 'BR' && rawUf !== 'BR') {
+    urls.push(encodeURI(`${vpsBase}/${ano}/BR/${fotoLimpa}`));
+  }
+
+  // Fallback final
+  urls.push('/avatar.png');
+
+  console.log(`[Fotos Tentativas] ${nomeCandidato} (${ano}) ->`, urls);
+
+  return urls;
 }

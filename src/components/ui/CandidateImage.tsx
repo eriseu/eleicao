@@ -21,7 +21,6 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
 
   const handleError = () => {
     if (currentIndex < urls.length - 1) {
-      console.warn(`❌ Falha ao carregar [${urls[currentIndex]}]. Tentando candidatura anterior...`);
       setCurrentIndex((prev) => prev + 1);
     }
   };
@@ -35,6 +34,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       className={className}
       onError={handleError}
       referrerPolicy="no-referrer"
+      loading="lazy" // Perfeito para listas e rankings grandes
     />
   );
 }

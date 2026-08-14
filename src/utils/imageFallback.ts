@@ -1,83 +1,77 @@
 import { Candidato } from '@/types';
 
 /**
- * Limpa o nome da foto removendo o prefixo do arquivo ZIP se presente.
+ * Limpa o nome da foto removendo o prefixo ZIP se presente.
  */
 function cleanFotoPath(foto: string): string {
-  if (foto.includes('.zip/')) {
-    return foto.split('.zip/')[1];
-  }
-  return foto;
+  return foto.includes('.zip/') ? foto.split('.zip/')[1] : foto;
 }
 
 /**
- * Extrai a UF do nome do arquivo padrão do TSE. (Ex: "FRJ19000..." -> "RJ")
+ * Extrai a UF do nome do arquivo (ex: "FSP25000..." -> "SP").
+ * Muito mais rápido do que Regex quando executado centenas de vezes em listas/rankings.
  */
 function extractUfFromFileName(fileName: string): string | null {
-  const match = fileName.match(/^F([A-Za-z]{2})/);
-  if (match && match[1]) {
-    return match[1].toUpperCase();
+  if (fileName.startsWith('F') && fileName.length >= 3) {
+    const uf = fileName.substring(1, 3).toUpperCase();
+    if (/^[A-Z]{2}$/.test(uf)) return uf;
   }
   return null;
 }
 
-/**
- * Gera a fila de URLs percorrendo o histórico de candidaturas da mais recente até a mais antiga.
- */
 export function getPhotoUrls(candidato: Candidato): string[] {
-  const { nome_completo } = candidato;
   const vpsBase = process.env.NEXT_PUBLIC_VPS_URL || 'https://f.centraleti.com.br/f';
-
   const urls: string[] = [];
 
-  // Coleta a candidatura principal/última e a lista de candidaturas anteriores
-  const historicoGeral = [
-    candidato.ultima_candidatura,
-    candidato,
-    ...((candidato as any).candidaturas || []),
-    ...((candidato as any).historico || [])
-  ].filter(Boolean);
+  // 1. Coleta apenas fontes únicas de candidaturas sem duplicar o objeto principal
+  const candsUnicas = new Map<string, any>();
 
-  // Percorre todo o histórico buscando fotos válidas no VPS
-  historicoGeral.forEach((cand: any) => {
+  // Adiciona a última candidatura se existir
+  if (candidato.ultima_candidatura) {
+    const key = `${candidato.ultima_candidatura.ano_eleicao}_${candidato.ultima_candidatura.foto}`;
+    candsUnicas.set(key, candidato.ultima_candidatura);
+  }
+
+  // Adiciona as candidaturas do histórico
+  const historico = (candidato as any).candidaturas || (candidato as any).historico || [];
+  if (Array.isArray(historico)) {
+    historico.forEach((c) => {
+      if (c && c.foto) {
+        const key = `${c.ano_eleicao || c.ano}_${c.foto}`;
+        if (!candsUnicas.has(key)) candsUnicas.set(key, c);
+      }
+    });
+  }
+
+  // Se nada foi adicionado ao Map, tenta o objeto raiz
+  if (candsUnicas.size === 0 && (candidato as any).foto) {
+    candsUnicas.set(`${(candidato as any).ano}_${(candidato as any).foto}`, candidato);
+  }
+
+  // 2. Monta as URLs diretas sem variações desnecessárias
+  candsUnicas.forEach((cand) => {
     const ano = cand.ano_eleicao || cand.ano;
-    const rawUf = (cand.uf || '').toUpperCase();
     const rawFoto = cand.foto;
+    const rawUf = (cand.uf || '').toUpperCase();
 
     if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) return;
 
-    // Se já for uma URL absoluta
     if (rawFoto.startsWith('http')) {
       urls.push(rawFoto);
       return;
     }
 
     const fotoLimpa = cleanFotoPath(rawFoto);
-    const ufDoArquivo = extractUfFromFileName(fotoLimpa);
-    const ufEfetiva = ufDoArquivo || rawUf;
+    // UF do próprio arquivo é a regra absoluta
+    const ufEfetiva = extractUfFromFileName(fotoLimpa) || (rawUf !== 'BR' ? rawUf : null);
 
     if (ufEfetiva) {
       urls.push(`${vpsBase}/${ano}/${ufEfetiva}/${fotoLimpa}`);
     }
-
-    // Se a UF do banco for diferente da UF do arquivo (ex: BR vs RJ), adiciona como fallback secundário
-    if (rawUf && rawUf !== ufEfetiva) {
-      urls.push(`${vpsBase}/${ano}/${rawUf}/${fotoLimpa}`);
-    }
   });
 
-  // Remove URLs duplicadas preservando a ordem (mais recente -> mais antiga)
-  const uniqueUrls = Array.from(new Set(urls));
+  // Fallback final
+  urls.push('/avatar.png');
 
-  // Fallback final: Avatar padrão local
-  uniqueUrls.push('/avatar.png');
-
-  if (uniqueUrls.length === 1) {
-    console.warn(
-      `%c[imageFallback] ${nome_completo} não possui foto em nenhum mandato. Usando avatar padrão.`,
-      'color: #ff9800;'
-    );
-  }
-
-  return uniqueUrls;
+  return urls;
 }

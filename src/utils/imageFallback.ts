@@ -2,7 +2,6 @@ import { Candidato } from '@/types';
 
 /**
  * Limpa o nome da foto removendo o prefixo do arquivo ZIP se presente.
- * Exemplo: "foto_cand2026_ES_div.zip/FES80002531645_div.jpg" -> "FES80002531645_div.jpg"
  */
 function cleanFotoPath(foto: string): string {
   if (foto.includes('.zip/')) {
@@ -12,37 +11,73 @@ function cleanFotoPath(foto: string): string {
 }
 
 /**
- * Gera a fila de URLs para a foto do candidato utilizando a estrutura do VPS.
+ * Extrai a UF do nome do arquivo padrão do TSE. (Ex: "FRJ19000..." -> "RJ")
+ */
+function extractUfFromFileName(fileName: string): string | null {
+  const match = fileName.match(/^F([A-Za-z]{2})/);
+  if (match && match[1]) {
+    return match[1].toUpperCase();
+  }
+  return null;
+}
+
+/**
+ * Gera a fila de URLs percorrendo o histórico de candidaturas da mais recente até a mais antiga.
  */
 export function getPhotoUrls(candidato: Candidato): string[] {
-  const { nome_completo, ultima_candidatura } = candidato;
-  const vpsBase = process.env.NEXT_PUBLIC_VPS_URL;
+  const { nome_completo } = candidato;
+  const vpsBase = process.env.NEXT_PUBLIC_VPS_URL || 'https://f.centraleti.com.br/f';
 
   const urls: string[] = [];
 
-  // Dados da candidatura (no objeto filho ou achatado)
-  const candidatura = ultima_candidatura || (candidato as any);
-  
-  const ano = candidatura.ano_eleicao || (candidato as any).ano;
-  const uf = candidatura.uf || (candidato as any).uf;
-  const rawFoto = candidatura.foto || (candidato as any).foto;
+  // Coleta a candidatura principal/última e a lista de candidaturas anteriores
+  const historicoGeral = [
+    candidato.ultima_candidatura,
+    candidato,
+    ...((candidato as any).candidaturas || []),
+    ...((candidato as any).historico || [])
+  ].filter(Boolean);
 
-  // Se houver URL base da VPS, ano, UF e o campo foto preenchido
-  if (vpsBase && rawFoto && ano && uf) {
+  // Percorre todo o histórico buscando fotos válidas no VPS
+  historicoGeral.forEach((cand: any) => {
+    const ano = cand.ano_eleicao || cand.ano;
+    const rawUf = (cand.uf || '').toUpperCase();
+    const rawFoto = cand.foto;
+
+    if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) return;
+
+    // Se já for uma URL absoluta
+    if (rawFoto.startsWith('http')) {
+      urls.push(rawFoto);
+      return;
+    }
+
     const fotoLimpa = cleanFotoPath(rawFoto);
-    const ufUpper = uf.toUpperCase();
+    const ufDoArquivo = extractUfFromFileName(fotoLimpa);
+    const ufEfetiva = ufDoArquivo || rawUf;
 
-    // Composição no formato: {vpsBase}/{ano}/{UF}/{nome_da_foto.jpg}
-    urls.push(`${vpsBase}/${ano}/${ufUpper}/${fotoLimpa}`);
-  } else {
+    if (ufEfetiva) {
+      urls.push(`${vpsBase}/${ano}/${ufEfetiva}/${fotoLimpa}`);
+    }
+
+    // Se a UF do banco for diferente da UF do arquivo (ex: BR vs RJ), adiciona como fallback secundário
+    if (rawUf && rawUf !== ufEfetiva) {
+      urls.push(`${vpsBase}/${ano}/${rawUf}/${fotoLimpa}`);
+    }
+  });
+
+  // Remove URLs duplicadas preservando a ordem (mais recente -> mais antiga)
+  const uniqueUrls = Array.from(new Set(urls));
+
+  // Fallback final: Avatar padrão local
+  uniqueUrls.push('/avatar.png');
+
+  if (uniqueUrls.length === 1) {
     console.warn(
-      `%c[imageFallback] ${nome_completo} não possui dados completos (VPS/Foto/Ano/UF). Usando avatar padrão.`,
+      `%c[imageFallback] ${nome_completo} não possui foto em nenhum mandato. Usando avatar padrão.`,
       'color: #ff9800;'
     );
   }
 
-  // Fallback final: Avatar padrão local
-  urls.push('/avatar.png');
-
-  return urls;
+  return uniqueUrls;
 }

@@ -21,7 +21,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
 
   const handleError = () => {
     if (currentIndex < urls.length - 1) {
-      console.warn(`❌ Falha no link VPS: ${urls[currentIndex]}. Mudando para o próximo fallback...`);
+      console.warn(`❌ Falha ao carregar [${urls[currentIndex]}]. Tentando candidatura anterior...`);
       setCurrentIndex((prev) => prev + 1);
     }
   };
@@ -34,7 +34,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       alt={alt || "Foto do candidato"}
       className={className}
       onError={handleError}
-      referrerPolicy="no-referrer" // 👈 Evita o envio de Referer e contorna o bloqueio de CORS do navegador em tags <img>
+      referrerPolicy="no-referrer"
     />
   );
 }

@@ -1,6 +1,7 @@
 import { Candidato } from '@/types';
 
 function cleanFotoPath(foto: string): string {
+  if (!foto) return '';
   const path = foto.includes('.zip/') ? foto.split('.zip/')[1] : foto;
   return path.trim();
 }
@@ -8,11 +9,23 @@ function cleanFotoPath(foto: string): string {
 export function getPhotoUrls(candidato: Candidato): string[] {
   const vpsBase = process.env.NEXT_PUBLIC_VPS_URL || 'https://f.centraleti.com.br/f';
   
-  const cand = candidato.ultima_candidatura || (candidato as any);
+  if (!candidato) return ['/avatar.png'];
+
+  // 1. Garante pegar a candidatura de MAIOR ANO (mais recente)
+  let cand = candidato.ultima_candidatura;
+
+  if (!cand && Array.isArray((candidato as any).candidaturas) && (candidato as any).candidaturas.length > 0) {
+    const sorted = [...(candidato as any).candidaturas].sort((a, b) => (b.ano_eleicao || b.ano) - (a.ano_eleicao || a.ano));
+    cand = sorted[0];
+  }
+
+  if (!cand) {
+    cand = candidato as any;
+  }
+
   const ano = cand.ano_eleicao || cand.ano;
   const rawFoto = cand.foto;
   const rawUf = (cand.uf || '').toUpperCase();
-  
   const nomeCandidato = (candidato as any).nome || cand.nm_candidato || cand.nome_urna || 'Candidato';
 
   if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) {
@@ -26,7 +39,7 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   const fotoLimpa = cleanFotoPath(rawFoto);
   const upperFoto = fotoLimpa.toUpperCase();
 
-  // 1. Extrai a UF do nome do arquivo
+  // Extrai a UF pelo nome do arquivo
   let ufExtraida: string | null = null;
   if (upperFoto.startsWith('FBR') || upperFoto.startsWith('BR')) {
     ufExtraida = 'BR';
@@ -37,21 +50,15 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     }
   }
 
+  const ufFinal = ufExtraida || rawUf || 'BR';
   const urls: string[] = [];
 
-  // Tenta com a UF extraída do arquivo
-  if (ufExtraida) {
-    urls.push(encodeURI(`${vpsBase}/${ano}/${ufExtraida}/${fotoLimpa}`));
-  }
+  // Tenta a foto oficial (ex: 2018/BA/FBA50000627559_div.jpg)
+  urls.push(encodeURI(`${vpsBase}/${ano}/${ufFinal}/${fotoLimpa}`));
 
-  // Tenta com a UF cadastrada no objeto (se for diferente da extraída)
-  if (rawUf && rawUf !== ufExtraida) {
+  // Se a UF extraída for diferente da UF da candidatura, adicione como segunda opção
+  if (rawUf && rawUf !== ufFinal) {
     urls.push(encodeURI(`${vpsBase}/${ano}/${rawUf}/${fotoLimpa}`));
-  }
-
-  // Se nada funcionou até aqui e ainda não tentou BR, adiciona pasta BR
-  if (ufExtraida !== 'BR' && rawUf !== 'BR') {
-    urls.push(encodeURI(`${vpsBase}/${ano}/BR/${fotoLimpa}`));
   }
 
   // Fallback final

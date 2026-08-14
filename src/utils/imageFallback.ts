@@ -19,10 +19,13 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   const ano = cand.ano_eleicao || cand.ano;
   const rawFoto = cand.foto;
   const rawUf = (cand.uf || '').toUpperCase();
+  
+  // Acessa o nome de forma segura para o TypeScript não quebrar o build
+  const nomeCandidato = (candidato as any).nome || cand.nm_candidato || cand.nome_urna || 'Candidato';
 
   // 🔍 LOG PARA INSPECIONAR OS DADOS BRUTOS
   console.log('--- Debug Foto Candidato ---', {
-    nome: candidato.nome,
+    nome: nomeCandidato,
     rawFoto,
     ano,
     rawUf,
@@ -30,7 +33,7 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   });
 
   if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) {
-    console.log(`[Foto Fallback - Sem Foto/Ano] ${candidato.nome} -> /avatar.png`);
+    console.log(`[Foto Fallback - Sem Foto/Ano] ${nomeCandidato} -> /avatar.png`);
     return ['/avatar.png'];
   }
 
@@ -45,7 +48,7 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     const urlMontada = `${vpsBase}/${ano}/${ufEfetiva}/${fotoLimpa}`;
     
     // 🔍 LOG DA URL FINAL GERADA
-    console.log(`[Foto Gerada] ${candidato.nome} -> ${urlMontada}`);
+    console.log(`[Foto Gerada] ${nomeCandidato} -> ${urlMontada}`);
 
     return [
       urlMontada,
@@ -53,6 +56,6 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     ];
   }
 
-  console.log(`[Foto Fallback - Sem UF] ${candidato.nome} -> /avatar.png (ufEfetiva era null)`);
+  console.log(`[Foto Fallback - Sem UF] ${nomeCandidato} -> /avatar.png (ufEfetiva era null)`);
   return ['/avatar.png'];
 }

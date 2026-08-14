@@ -1,13 +1,26 @@
 import { Candidato } from '@/types';
 
+/**
+ * Limpa o nome da foto removendo o prefixo ZIP se presente.
+ */
 function cleanFotoPath(foto: string): string {
-  return foto.includes('.zip/') ? foto.split('.zip/')[1] : foto;
+  return foto.includes('.zip/') ? foto.split('.zip/')[1].trim() : foto.trim();
 }
 
+/**
+ * Extrai a UF do nome do arquivo padrão TSE (ex: "FSP250..." -> "SP", "BR2800..." -> "BR").
+ */
 function getUfFromFileName(fileName: string): string | null {
-  if (fileName.length >= 3 && fileName[0] === 'F') {
-    const uf = fileName.slice(1, 3).toUpperCase();
-    if (uf >= 'AA' && uf <= 'ZZ') return uf;
+  if (fileName.length >= 3) {
+    // Caso seja foto nacional (ex: BR2800...)
+    if (fileName.startsWith('BR')) {
+      return 'BR';
+    }
+    // Caso seja foto estadual (ex: FSP..., FRS...)
+    if (fileName[0] === 'F') {
+      const uf = fileName.slice(1, 3).toUpperCase();
+      if (uf >= 'AA' && uf <= 'ZZ') return uf;
+    }
   }
   return null;
 }
@@ -20,20 +33,9 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   const rawFoto = cand.foto;
   const rawUf = (cand.uf || '').toUpperCase();
   
-  // Acessa o nome de forma segura para o TypeScript não quebrar o build
   const nomeCandidato = (candidato as any).nome || cand.nm_candidato || cand.nome_urna || 'Candidato';
 
-  // 🔍 LOG PARA INSPECIONAR OS DADOS BRUTOS
-  console.log('--- Debug Foto Candidato ---', {
-    nome: nomeCandidato,
-    rawFoto,
-    ano,
-    rawUf,
-    vpsBase
-  });
-
   if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) {
-    console.log(`[Foto Fallback - Sem Foto/Ano] ${nomeCandidato} -> /avatar.png`);
     return ['/avatar.png'];
   }
 
@@ -42,12 +44,14 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   }
 
   const fotoLimpa = cleanFotoPath(rawFoto);
-  const ufEfetiva = getUfFromFileName(fotoLimpa) || (rawUf !== 'BR' ? rawUf : null);
+  
+  // Agora detecta tanto 'BR' quanto UFs estaduais via arquivo ou rawUf
+  const ufEfetiva = getUfFromFileName(fotoLimpa) || rawUf || 'BR';
 
   if (ufEfetiva) {
-    const urlMontada = `${vpsBase}/${ano}/${ufEfetiva}/${fotoLimpa}`;
+    const rawUrl = `${vpsBase}/${ano}/${ufEfetiva}/${fotoLimpa}`;
+    const urlMontada = encodeURI(rawUrl);
     
-    // 🔍 LOG DA URL FINAL GERADA
     console.log(`[Foto Gerada] ${nomeCandidato} -> ${urlMontada}`);
 
     return [
@@ -56,6 +60,5 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     ];
   }
 
-  console.log(`[Foto Fallback - Sem UF] ${nomeCandidato} -> /avatar.png (ufEfetiva era null)`);
   return ['/avatar.png'];
 }

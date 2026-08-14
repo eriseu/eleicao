@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getPhotoUrls } from '@/utils/imageFallback'; // Ajuste o caminho conforme seu projeto
+import { getPhotoUrls } from '@/utils/imageFallback';
 
 interface CandidateImageProps {
   candidato: any;
@@ -14,16 +14,14 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
   useEffect(() => {
     if (!candidato) return;
 
-    // Obtém a fila contendo [ URL_VPS, '/avatar.png' ]
     const queue = getPhotoUrls(candidato);
-
     setUrls(queue);
     setCurrentIndex(0);
   }, [candidato]);
 
   const handleError = () => {
     if (currentIndex < urls.length - 1) {
-      console.warn(`❌ Falha na imagem VPS: ${urls[currentIndex]}. Mudando para o avatar padrão.`);
+      console.warn(`❌ Falha no link VPS: ${urls[currentIndex]}. Mudando para o próximo fallback...`);
       setCurrentIndex((prev) => prev + 1);
     }
   };
@@ -36,8 +34,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       alt={alt || "Foto do candidato"}
       className={className}
       onError={handleError}
-      referrerPolicy="no-referrer"
-      crossOrigin="anonymous"
+      referrerPolicy="no-referrer" // 👈 Evita o envio de Referer e contorna o bloqueio de CORS do navegador em tags <img>
     />
   );
 }

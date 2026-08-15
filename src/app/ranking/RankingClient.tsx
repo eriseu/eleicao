@@ -129,22 +129,18 @@ function RankingContent() {
 
       const sortedCands = [...candsDoPerfil].sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
 
+      // 1. Tenta achar a candidatura correspondente aos filtros
       const candidaturaCorrespondente = sortedCands.find((c: any) => 
         cargosUpper.includes((c.cargo || '').toUpperCase().trim()) &&
         (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
         (!selectedMunicipio || (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim())
       );
 
+      // 2. Se não achar, usa a mais recente
       const candidaturaPrincipal = candidaturaCorrespondente || sortedCands[0];
 
-      const candidaturaComFoto = sortedCands.find((c: any) => {
-        const foto = c.foto || c.sq_candidato;
-        if (!foto) return false;
-        const fotoStr = String(foto);
-        return fotoStr.trim() !== '' && !fotoStr.includes('avatar.png');
-      });
-
-      const fotoFinal = candidaturaComFoto ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) : candidaturaPrincipal.foto;
+      // 3. USA A FOTO DA PRÓPRIA CANDIDATURA SELECIONADA (Evita misturar foto de 2022 com ano de 2018)
+      const fotoFinal = candidaturaPrincipal.foto || candidaturaPrincipal.sq_candidato || '';
 
       return [{
         id: perfil.id,

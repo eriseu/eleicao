@@ -8,7 +8,7 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   
   if (!candidato) return ['/avatar.png'];
 
-  // 1. Seleciona a candidatura mais recente (maior ano)
+  // 1. Tenta pegar a candidatura principal ou mais recente
   let cand: any = candidato.ultima_candidatura;
 
   if (!cand && Array.isArray((candidato as any).candidaturas) && (candidato as any).candidaturas.length > 0) {
@@ -22,12 +22,12 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     cand = candidato as any;
   }
 
-  const ano = cand.ano_eleicao || cand.ano;
-  const rawFoto = cand.foto;
+  const rawFoto = cand.foto || (candidato as any).foto;
+  const candAno = cand.ano_eleicao || cand.ano || (candidato as any).ano_eleicao;
   const candUf = (cand.uf || (candidato as any).uf || '').toUpperCase();
   const nomeCandidato = (candidato as any).nome || cand.nm_candidato || cand.nome_urna || 'Candidato';
 
-  if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) {
+  if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar') {
     return ['/avatar.png'];
   }
 
@@ -35,23 +35,27 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     return [rawFoto, '/avatar.png'];
   }
 
+  let anoPasta: string | null = null;
   let ufPasta: string | null = null;
   let nomeArquivo: string = rawFoto.trim();
 
-  // 2. Se a string contiver o padrão .zip/ (ex: foto_cand2018_BR_div.zip/FBR280000601017_div.jpg)
+  // 2. Extrai ANO e UF de dentro da string do zip (ex: foto_cand2024_BA_div.zip/FBA50001907550_div.jpg)
   if (rawFoto.includes('.zip/')) {
     const parts = rawFoto.split('.zip/');
-    const zipName = parts[0]; // ex: "foto_cand2018_BR_div"
-    nomeArquivo = parts[1].trim(); // ex: "FBR280000601017_div.jpg"
+    const zipName = parts[0]; // ex: "foto_cand2024_BA_div"
+    nomeArquivo = parts[1].trim(); // ex: "FBA50001907550_div.jpg"
 
-    // Extrai a UF do próprio nome do zip (ex: foto_cand2018_BR_div -> "BR")
-    const matchZipUf = zipName.match(/foto_cand\d+_(.+?)_div/i);
-    if (matchZipUf && matchZipUf[1]) {
-      ufPasta = matchZipUf[1].toUpperCase();
+    // Extrai o ANO e UF do padrão: foto_cand{ANO}_{UF}_div
+    const matchZip = zipName.match(/foto_cand(\d{4})_(.+?)_div/i);
+    if (matchZip) {
+      anoPasta = matchZip[1];
+      ufPasta = matchZip[2].toUpperCase();
     }
   }
 
-  // 3. Fallbacks de UF caso não tenha vindo no nome do zip
+  // 3. Fallbacks para o Ano e UF se não vieram descritos no .zip/
+  const anoFinal = anoPasta || (candAno ? String(candAno) : null);
+
   if (!ufPasta) {
     const upperFoto = nomeArquivo.toUpperCase();
     if (upperFoto.startsWith('FBR') || upperFoto.startsWith('BR')) {
@@ -65,19 +69,29 @@ export function getPhotoUrls(candidato: Candidato): string[] {
   }
 
   const ufFinal = ufPasta || candUf || 'BR';
+
+  if (!anoFinal) {
+    return ['/avatar.png'];
+  }
+
   const urls: string[] = [];
 
-  // 4. Monta a URL exata do arquivo no servidor
-  urls.push(encodeURI(`${vpsBase}/${ano}/${ufFinal}/${nomeArquivo}`));
+  // 4. Monta a URL exata extraída da própria foto (Garante o ano e UF do próprio arquivo!)
+  urls.push(encodeURI(`${vpsBase}/${anoFinal}/${ufFinal}/${nomeArquivo}`));
 
-  // Se houver divergência entre a UF do zip e a UF da candidatura, adiciona fallback
+  // Fallback 1: Caso a UF da pasta div divirja da UF da candidatura
   if (candUf && candUf !== ufFinal) {
-    urls.push(encodeURI(`${vpsBase}/${ano}/${candUf}/${nomeArquivo}`));
+    urls.push(encodeURI(`${vpsBase}/${anoFinal}/${candUf}/${nomeArquivo}`));
+  }
+
+  // Fallback 2: Caso o Ano da candidatura seja diferente do ano extraído do arquivo
+  if (candAno && String(candAno) !== anoFinal) {
+    urls.push(encodeURI(`${vpsBase}/${candAno}/${ufFinal}/${nomeArquivo}`));
   }
 
   urls.push('/avatar.png');
 
-  console.log(`[Fotos Tentativas] ${nomeCandidato} (${ano}) ->`, urls);
+  console.log(`[Fotos Tentativas] ${nomeCandidato} (${anoFinal}) ->`, urls);
 
   return urls;
 }

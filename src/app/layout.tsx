@@ -51,8 +51,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566"
-         crossorigin="anonymous"></script>
+        <script 
+          async 
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-..."
+          crossOrigin="anonymous">
+        </script>
       <head />
       <body className="antialiased">
         {/* Google Analytics */}

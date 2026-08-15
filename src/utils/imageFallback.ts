@@ -1,17 +1,14 @@
 import { Candidato } from '@/types';
 
-function cleanFotoPath(foto: string): string {
-  if (!foto) return '';
-  const path = foto.includes('.zip/') ? foto.split('.zip/')[1] : foto;
-  return path.trim();
-}
-
+/**
+ * Trata e extrai a foto e o diretório/UF correto direto do campo `foto`.
+ */
 export function getPhotoUrls(candidato: Candidato): string[] {
   const vpsBase = process.env.NEXT_PUBLIC_VPS_URL || 'https://f.centraleti.com.br/f';
   
   if (!candidato) return ['/avatar.png'];
 
-  // 1. Busca candidatura de MAIOR ANO (mais recente)
+  // 1. Seleciona a candidatura mais recente (maior ano)
   let cand: any = candidato.ultima_candidatura;
 
   if (!cand && Array.isArray((candidato as any).candidaturas) && (candidato as any).candidaturas.length > 0) {
@@ -21,14 +18,13 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     cand = sorted[0];
   }
 
-  // Fallback definitivo garantindo que 'cand' nunca será null/undefined para o TypeScript
   if (!cand) {
     cand = candidato as any;
   }
 
   const ano = cand.ano_eleicao || cand.ano;
   const rawFoto = cand.foto;
-  const rawUf = (cand.uf || '').toUpperCase();
+  const candUf = (cand.uf || (candidato as any).uf || '').toUpperCase();
   const nomeCandidato = (candidato as any).nome || cand.nm_candidato || cand.nome_urna || 'Candidato';
 
   if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar' || !ano) {
@@ -39,32 +35,46 @@ export function getPhotoUrls(candidato: Candidato): string[] {
     return [rawFoto, '/avatar.png'];
   }
 
-  const fotoLimpa = cleanFotoPath(rawFoto);
-  const upperFoto = fotoLimpa.toUpperCase();
+  let ufPasta: string | null = null;
+  let nomeArquivo: string = rawFoto.trim();
 
-  // 2. Extrai a UF pelo nome do arquivo (ex: FBA..., FBR..., BR...)
-  let ufExtraida: string | null = null;
-  if (upperFoto.startsWith('FBR') || upperFoto.startsWith('BR')) {
-    ufExtraida = 'BR';
-  } else if (upperFoto.startsWith('F') && upperFoto.length >= 3) {
-    const possivelUf = upperFoto.slice(1, 3);
-    if (possivelUf >= 'AA' && possivelUf <= 'ZZ') {
-      ufExtraida = possivelUf;
+  // 2. Se a string contiver o padrão .zip/ (ex: foto_cand2018_BR_div.zip/FBR280000601017_div.jpg)
+  if (rawFoto.includes('.zip/')) {
+    const parts = rawFoto.split('.zip/');
+    const zipName = parts[0]; // ex: "foto_cand2018_BR_div"
+    nomeArquivo = parts[1].trim(); // ex: "FBR280000601017_div.jpg"
+
+    // Extrai a UF do próprio nome do zip (ex: foto_cand2018_BR_div -> "BR")
+    const matchZipUf = zipName.match(/foto_cand\d+_(.+?)_div/i);
+    if (matchZipUf && matchZipUf[1]) {
+      ufPasta = matchZipUf[1].toUpperCase();
     }
   }
 
-  const ufFinal = ufExtraida || rawUf || 'BR';
-  const urls: string[] = [];
-
-  // Tenta a foto oficial (ex: 2018/BA/FBA50000627559_div.jpg)
-  urls.push(encodeURI(`${vpsBase}/${ano}/${ufFinal}/${fotoLimpa}`));
-
-  // Se a UF extraída for diferente da UF da candidatura, adiciona como alternativa
-  if (rawUf && rawUf !== ufFinal) {
-    urls.push(encodeURI(`${vpsBase}/${ano}/${rawUf}/${fotoLimpa}`));
+  // 3. Fallbacks de UF caso não tenha vindo no nome do zip
+  if (!ufPasta) {
+    const upperFoto = nomeArquivo.toUpperCase();
+    if (upperFoto.startsWith('FBR') || upperFoto.startsWith('BR')) {
+      ufPasta = 'BR';
+    } else if (upperFoto.startsWith('F') && upperFoto.length >= 3) {
+      const possivelUf = upperFoto.slice(1, 3);
+      if (possivelUf >= 'AA' && possivelUf <= 'ZZ') {
+        ufPasta = possivelUf;
+      }
+    }
   }
 
-  // Fallback final para imagem padrão local
+  const ufFinal = ufPasta || candUf || 'BR';
+  const urls: string[] = [];
+
+  // 4. Monta a URL exata do arquivo no servidor
+  urls.push(encodeURI(`${vpsBase}/${ano}/${ufFinal}/${nomeArquivo}`));
+
+  // Se houver divergência entre a UF do zip e a UF da candidatura, adiciona fallback
+  if (candUf && candUf !== ufFinal) {
+    urls.push(encodeURI(`${vpsBase}/${ano}/${candUf}/${nomeArquivo}`));
+  }
+
   urls.push('/avatar.png');
 
   console.log(`[Fotos Tentativas] ${nomeCandidato} (${ano}) ->`, urls);

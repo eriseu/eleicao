@@ -13,12 +13,25 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
 
   useEffect(() => {
     if (!candidato) return;
-    setUrls(getPhotoUrls(candidato));
+    const listaUrls = getPhotoUrls(candidato);
+    setUrls(listaUrls);
     setCurrentIndex(0);
   }, [candidato]);
 
   const handleError = () => {
-    // Se a foto na VPS der 404, pula imediatamente para o próximo da fila (avatar.png)
+    const urlComErro = urls[currentIndex];
+
+    // Loga no console o 404 e qual será a foto substituta
+    if (urlComErro && urlComErro !== '/avatar.png') {
+      console.warn(`🚨 [404 Foto Candidato] Falha ao carregar: ${urlComErro}`, {
+        candidatoId: candidato?.id,
+        nome: candidato?.nome || candidato?.nome_urna,
+        urlComErro,
+        proximaTentativa: urls[currentIndex + 1] || '/avatar.png'
+      });
+    }
+
+    // Pula para a próxima foto da lista (histórico anterior ou avatar)
     if (currentIndex < urls.length - 1) {
       setCurrentIndex((prev) => prev + 1);
     }

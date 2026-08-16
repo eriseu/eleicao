@@ -3,7 +3,7 @@ import { getPhotoUrls } from '@/utils/imageFallback';
 
 interface CandidateImageProps {
   candidato: any;
-  alt: string;
+  alt?: string;
   className?: string;
 }
 

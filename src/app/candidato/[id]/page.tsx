@@ -99,7 +99,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-slate-700 bg-slate-950 shadow-lg">
             <CandidateImage 
               candidato={candidato} 
-              alt={candidato.nome_completo || candidato.nome_urna} 
+              alt={candidato.nome_completo || candidato.nome_urna || 'Foto do Candidato'} 
               className="w-full h-full object-cover" 
             />
           </div>
@@ -180,7 +180,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
                   
                   {/* Foto de cada ano específico */}
                   <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-700 bg-slate-900 flex-shrink-0">
-                    <CandidateImage candidato={cand} alt={cand.nome_urna || "Candidato"} className="w-full h-full object-cover" />
+                    <CandidateImage 
+                      candidato={{ ...cand, candidaturas: historicoCandidaturas }} 
+                      alt={cand.nome_urna || cand.nome_completo || 'Foto do Candidato'} 
+                      className="w-full h-full object-cover" 
+                    />
                   </div>
 
                   <div className="min-w-0 flex-1">

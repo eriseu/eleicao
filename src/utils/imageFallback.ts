@@ -2,6 +2,9 @@ import { Candidato } from '@/types';
 
 const vpsBase = process.env.NEXT_PUBLIC_VPS_URL || 'https://f.centraleti.com.br/f';
 
+/**
+ * Constrói a URL da imagem no servidor VPS para um objeto de candidatura
+ */
 function buildUrlFromCand(cand: any, candUfFallback: string): string | null {
   const rawFoto = cand?.foto || cand;
   if (!rawFoto || rawFoto === 'avatar.png' || rawFoto === 'avatar') return null;
@@ -11,6 +14,7 @@ function buildUrlFromCand(cand: any, candUfFallback: string): string | null {
   let ufPasta: string | null = null;
   let nomeArquivo: string = String(rawFoto).trim();
 
+  // Extrai ANO e UF caso a string venha no padrão .zip/
   if (nomeArquivo.includes('.zip/')) {
     const parts = nomeArquivo.split('.zip/');
     nomeArquivo = parts[1].trim();
@@ -38,44 +42,43 @@ function buildUrlFromCand(cand: any, candUfFallback: string): string | null {
   return encodeURI(`${vpsBase}/${anoFinal}/${ufFinal}/${nomeArquivo}`);
 }
 
+/**
+ * Gera a lista priorizada de URLs de fotos para a tentativa de carregamento
+ */
 export function getPhotoUrls(candidatoInput: any): string[] {
   if (!candidatoInput) return ['/avatar.png'];
 
-  // Identifica se foi passado o candidato completo ou um objeto de candidatura individual
-  const candidatoPai = candidatoInput.candidato || candidatoInput;
-  
-  let todasCandidaturas: any[] = [];
-
-  if (Array.isArray(candidatoInput.candidaturas) && candidatoInput.candidaturas.length > 0) {
-    todasCandidaturas = candidatoInput.candidaturas;
-  } else if (Array.isArray(candidatoPai.candidaturas) && candidatoPai.candidaturas.length > 0) {
-    todasCandidaturas = candidatoPai.candidaturas;
-  } else {
-    todasCandidaturas = [candidatoInput];
-  }
-
-  // Ordena o histórico completo da eleição mais recente para a mais antiga (2018 -> 2006)
-  const candidaturasOrdenadas = [...todasCandidaturas].sort(
-    (a: any, b: any) => (b.ano_eleicao || b.ano || 0) - (a.ano_eleicao || a.ano || 0)
-  );
-
   const urlsSet = new Set<string>();
 
-  // 1. Tenta primeiro a foto da candidatura específica requisitada
-  const urlEspecifica = buildUrlFromCand(candidatoInput, candidatoInput.uf || '');
-  if (urlEspecifica) {
-    urlsSet.add(urlEspecifica);
+  // 1. Tenta a foto direta do objeto recebido
+  const urlAtual = buildUrlFromCand(candidatoInput, candidatoInput.uf || '');
+  if (urlAtual) {
+    urlsSet.add(urlAtual);
   }
 
-  // 2. Adiciona as fotos de outros anos do candidato como fallback (da mais recente para a mais antiga)
-  for (const cand of candidaturasOrdenadas) {
-    const url = buildUrlFromCand(cand, cand.uf || candidatoPai.uf || '');
-    if (url) {
-      urlsSet.add(url);
+  // 2. Procura a lista de candidaturas dentro do próprio objeto ou de um objeto pai (caso tenha sido repassado)
+  const listaCandidaturas = 
+    candidatoInput.candidaturas || 
+    candidatoInput.historico || 
+    candidatoInput.candidato_pai?.candidaturas || 
+    [];
+
+  if (Array.isArray(listaCandidaturas) && listaCandidaturas.length > 0) {
+    // Ordena as candidaturas da mais recente para a mais antiga (ex: 2018 -> 2006)
+    const ordenadas = [...listaCandidaturas].sort(
+      (a: any, b: any) => (b.ano_eleicao || b.ano || 0) - (a.ano_eleicao || a.ano || 0)
+    );
+
+    // Adiciona as URLs de todas as outras candidaturas no conjunto de fallbacks
+    for (const cand of ordenadas) {
+      const url = buildUrlFromCand(cand, cand.uf || candidatoInput.uf || '');
+      if (url) {
+        urlsSet.add(url);
+      }
     }
   }
 
-  // 3. Avatar genérico como último recurso
+  // 3. Fallback final caso nenhuma das tentativas do histórico funcione
   const urlsFinal = Array.from(urlsSet);
   urlsFinal.push('/avatar.png');
 

@@ -16,72 +16,65 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   const [loading, setLoading] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
 
-  // 1️⃣ CARREGAMENTO DOS DADOS DO CANDIDATO
   useEffect(() => {
-    async function loadCandidato() {
+    async function loadPerfilCompleto() {
+      if (!resolvedParams.id) return;
+
       try {
         setLoading(true);
+        // 1. Carrega dados cadastrais e histórico do Postgres via VPS
         const res = await fetch(`/api/candidato/${resolvedParams.id}`);
         if (!res.ok) throw new Error('Candidato não encontrado');
 
         const data = await res.json();
+        const candData = data.candidato || {};
+        const historico = data.historico || [];
 
-        setHistoricoCandidaturas(data.historico || []);
-        setCandidato({
-          ...data.candidato,
-          candidaturas: data.historico,
-          elo_score: 1200,
-          matches_count: 0,
-        });
-      } catch (err) {
-        console.error('Erro ao buscar candidato no Postgres:', err);
-      } finally {
+        setHistoricoCandidaturas(historico);
+
+        // Define o candidato inicial
+        const candidatoBase = {
+          ...candData,
+          candidaturas: historico,
+          elo_score: candData.elo_score ?? 1200,
+          matches_count: candData.matches_count ?? 0,
+        };
+
+        setCandidato(candidatoBase);
         setLoading(false);
-      }
-    }
 
-    if (resolvedParams.id) {
-      loadCandidato();
-    }
-  }, [resolvedParams.id]);
-
-  // 2️⃣ CARREGAMENTO DE ELO E DISPUTAS NO SUPABASE
-  useEffect(() => {
-    async function loadStatsSupabase() {
-      if (!resolvedParams.id) return;
-
-      try {
+        // 2. Busca o score ELO e Duelos atualizados no Supabase usando o perfil_id ou id
         setLoadingStats(true);
-        const { data: perfilData, error } = await supabase
+        const perfilIdParaConsulta = candData.perfil_id || candData.id || resolvedParams.id;
+
+        const { data: perfilSupabase, error } = await supabase
           .from('perfis_candidatos')
           .select('elo_score, matches_count')
-          .eq('id', resolvedParams.id)
+          .eq('id', perfilIdParaConsulta)
           .maybeSingle();
 
         if (error) {
-          console.error('Erro Supabase:', error);
-          return;
-        }
-
-        if (perfilData) {
+          console.error('Erro ao consultar Supabase:', error);
+        } else if (perfilSupabase) {
           setCandidato((prev) =>
             prev
               ? {
                   ...prev,
-                  elo_score: perfilData.elo_score ?? prev.elo_score ?? 1200,
-                  matches_count: perfilData.matches_count ?? prev.matches_count ?? 0,
+                  elo_score: perfilSupabase.elo_score ?? prev.elo_score ?? 1200,
+                  matches_count: perfilSupabase.matches_count ?? prev.matches_count ?? 0,
                 }
               : null
           );
         }
       } catch (err) {
-        console.error('Erro ao carregar estatísticas do Supabase:', err);
+        console.error('Erro ao carregar perfil:', err);
       } finally {
+        setLoading(false);
         setLoadingStats(false);
       }
     }
 
-    loadStatsSupabase();
+    loadPerfilCompleto();
   }, [resolvedParams.id]);
 
   if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
@@ -110,19 +103,19 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           )}
         </div>
 
-        {/* Nome Completo em destaque abaixo da imagem */}
+        {/* Nome Completo */}
         <h1 className="text-lg font-black text-white mt-4 text-center leading-tight">
           {candidato.nome_completo || candidato.nome_urna}
         </h1>
 
-        {/* Cargo e Partido em Tag Compacta */}
+        {/* Cargo e Partido */}
         <div className="flex items-center gap-1.5 mt-2">
           <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
             {candAtual.cargo || candidato.cargo} • {candAtual.partido || candidato.partido}
           </span>
         </div>
 
-        {/* Placar ELO e Duelos / Disputas */}
+        {/* Score ELO e Disputas do Supabase */}
         <div className="grid grid-cols-2 gap-3 w-full mt-5 bg-slate-950/50 border border-white/5 p-3 rounded-2xl">
           <div className="text-center border-r border-white/10 pr-2">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ELO</span>
@@ -138,7 +131,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Ficha Geral do Candidato */}
+        {/* Ficha Técnica */}
         <div className="w-full mt-5 space-y-2 text-xs">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ficha Técnica</h3>
 
@@ -178,7 +171,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
               {historicoCandidaturas.map((cand: any, index: number) => (
                 <div key={index} className="bg-slate-950/60 border border-white/5 rounded-2xl p-2.5 flex items-center gap-3 text-xs">
                   
-                  {/* Foto de cada ano específico */}
                   <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-700 bg-slate-900 flex-shrink-0">
                     <CandidateImage 
                       candidato={{ ...cand, candidaturas: historicoCandidaturas }} 

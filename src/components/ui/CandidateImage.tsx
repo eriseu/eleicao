@@ -21,7 +21,6 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
   const handleError = () => {
     const urlComErro = urls[currentIndex];
 
-    // Loga no console o 404 e qual será a foto substituta
     if (urlComErro && urlComErro !== '/avatar.png') {
       console.warn(`🚨 [404 Foto Candidato] Falha ao carregar: ${urlComErro}`, {
         candidatoId: candidato?.id,
@@ -31,7 +30,6 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       });
     }
 
-    // Pula para a próxima foto da lista (histórico anterior ou avatar)
     if (currentIndex < urls.length - 1) {
       setCurrentIndex((prev) => prev + 1);
     }
@@ -42,6 +40,7 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       src={urls[currentIndex] || '/avatar.png'}
       alt={alt || "Foto do candidato"}
       className={className}
+      style={{ objectFit: 'cover', objectPosition: 'top center' }}
       onError={handleError}
       referrerPolicy="no-referrer"
       loading="lazy"

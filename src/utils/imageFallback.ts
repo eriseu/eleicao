@@ -38,33 +38,44 @@ function buildUrlFromCand(cand: any, candUfFallback: string): string | null {
   return encodeURI(`${vpsBase}/${anoFinal}/${ufFinal}/${nomeArquivo}`);
 }
 
-export function getPhotoUrls(candidato: any): string[] {
-  if (!candidato) return ['/avatar.png'];
+export function getPhotoUrls(candidatoInput: any): string[] {
+  if (!candidatoInput) return ['/avatar.png'];
 
-  const candUfGeral = candidato.uf || '';
-  let listaCandidaturas: any[] = [];
+  // Identifica se foi passado o candidato completo ou um objeto de candidatura individual
+  const candidatoPai = candidatoInput.candidato || candidatoInput;
+  
+  let todasCandidaturas: any[] = [];
 
-  // Extrai o histórico completo e ordena do ano mais recente ao mais antigo
-  if (Array.isArray(candidato.candidaturas) && candidato.candidaturas.length > 0) {
-    listaCandidaturas = [...candidato.candidaturas].sort(
-      (a: any, b: any) => (b.ano_eleicao || b.ano || 0) - (a.ano_eleicao || a.ano || 0)
-    );
-  } else if (candidato.ultima_candidatura) {
-    listaCandidaturas = [candidato.ultima_candidatura];
+  if (Array.isArray(candidatoInput.candidaturas) && candidatoInput.candidaturas.length > 0) {
+    todasCandidaturas = candidatoInput.candidaturas;
+  } else if (Array.isArray(candidatoPai.candidaturas) && candidatoPai.candidaturas.length > 0) {
+    todasCandidaturas = candidatoPai.candidaturas;
   } else {
-    listaCandidaturas = [candidato];
+    todasCandidaturas = [candidatoInput];
   }
+
+  // Ordena o histórico completo da eleição mais recente para a mais antiga (2018 -> 2006)
+  const candidaturasOrdenadas = [...todasCandidaturas].sort(
+    (a: any, b: any) => (b.ano_eleicao || b.ano || 0) - (a.ano_eleicao || a.ano || 0)
+  );
 
   const urlsSet = new Set<string>();
 
-  // Adiciona a foto de cada eleição na lista de tentativas
-  for (const cand of listaCandidaturas) {
-    const url = buildUrlFromCand(cand, candUfGeral);
+  // 1. Tenta primeiro a foto da candidatura específica requisitada
+  const urlEspecifica = buildUrlFromCand(candidatoInput, candidatoInput.uf || '');
+  if (urlEspecifica) {
+    urlsSet.add(urlEspecifica);
+  }
+
+  // 2. Adiciona as fotos de outros anos do candidato como fallback (da mais recente para a mais antiga)
+  for (const cand of candidaturasOrdenadas) {
+    const url = buildUrlFromCand(cand, cand.uf || candidatoPai.uf || '');
     if (url) {
       urlsSet.add(url);
     }
   }
 
+  // 3. Avatar genérico como último recurso
   const urlsFinal = Array.from(urlsSet);
   urlsFinal.push('/avatar.png');
 

@@ -37,13 +37,16 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
     };
   }
 
-  const displayName = candidate.candidacy?.nome_completo || candidate.nome_urna;
+  // CORREÇÃO AQUI: nome_completo vem de candidate e nome_urna vem de candidate.candidacy
+  const displayName = candidate.nome_completo || candidate.candidacy?.nome_urna || 'Perfil Político';
+  
   const details = [
     candidate.candidacy?.cargo,
     candidate.candidacy?.partido,
     candidate.candidacy?.municipio,
     candidate.candidacy?.uf,
   ].filter(Boolean).join(' · ');
+
   const title = `${displayName} — perfil político`;
   const description = `Conheça o perfil de ${candidate.nome_completo}${details ? `: ${details}` : ''}. Veja sua pontuação Elo e participação nos duelos.`;
   const canonical = `/candidato/${encodeURIComponent(id)}`;
@@ -96,4 +99,3 @@ export default async function CandidateLayout({ children, params }: CandidateLay
     </>
   );
 }
-

@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
     };
   }
 
-  const displayName = candidate.candidacy?.nome_urna || candidate.nome_completo;
+  const displayName = candidate.candidacy?.nome_completo || candidate.nome_urna;
   const details = [
     candidate.candidacy?.cargo,
     candidate.candidacy?.partido,

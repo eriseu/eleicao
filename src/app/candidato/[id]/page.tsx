@@ -4,14 +4,19 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
-import type { Candidato } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
-// Função auxiliar para calcular a idade exata com base na data de nascimento
+// Helper para validar e ignorar valores nulos ou marcadores como #NULO
+function eValido(valor: any): boolean {
+  if (valor === null || valor === undefined) return false;
+  const str = String(valor).trim().toUpperCase();
+  return str !== '' && str !== '#NULO' && str !== '#NULO#' && str !== 'NULO' && str !== '#NE#';
+}
+
 function calcularIdade(dataNascimento: string | null): number | null {
-  if (!dataNascimento) return null;
-  const nascimento = new Date(dataNascimento);
+  if (!eValido(dataNascimento)) return null;
+  const nascimento = new Date(dataNascimento!);
   if (isNaN(nascimento.getTime())) return null;
 
   const hoje = new Date();
@@ -24,13 +29,12 @@ function calcularIdade(dataNascimento: string | null): number | null {
   return idade;
 }
 
-// Mapeamento de siglas/códigos de gênero para exibição amigável
 function formatarGenero(genero: string | null): string | null {
-  if (!genero) return null;
-  const g = genero.toString().trim().toUpperCase();
+  if (!eValido(genero)) return null;
+  const g = String(genero).trim().toUpperCase();
   if (g === 'M' || g === '2') return 'Masculino';
   if (g === 'F' || g === '4') return 'Feminino';
-  return genero;
+  return String(genero);
 }
 
 export default function Perfil({ params }: { params: Promise<{ id: string }> }) {
@@ -67,13 +71,13 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         setCandidato(candidatoBase);
         setLoading(false);
 
-        // 2. Consulta dados dinâmicos do Supabase (Score, Duelos + Campos Extras de perfis_candidatos)
+        // 2. Consulta dados no Supabase trazendo NOME_COMPLETO para não perder a referência
         setLoadingStats(true);
         const perfilIdParaConsulta = candData.perfil_id || candData.id || resolvedParams.id;
 
         const { data: perfilSupabase, error } = await supabase
           .from('perfis_candidatos')
-          .select('elo_score, matches_count, genero, cor_raca, data_nascimento, nome_social')
+          .select('nome_completo, elo_score, matches_count, genero, cor_raca, data_nascimento, nome_social')
           .eq('id', perfilIdParaConsulta)
           .maybeSingle();
 
@@ -84,6 +88,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
             prev
               ? {
                   ...prev,
+                  nome_completo: perfilSupabase.nome_completo || prev.nome_completo,
                   elo_score: perfilSupabase.elo_score ?? prev.elo_score ?? 1200,
                   matches_count: perfilSupabase.matches_count ?? prev.matches_count ?? 0,
                   genero: perfilSupabase.genero ?? prev.genero,
@@ -112,6 +117,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   const anoReferencia = candAtual?.ano_eleicao || candidato?.ano_eleicao || '2026';
   const idade = calcularIdade(candidato.data_nascimento);
 
+  // Nome principal exibe o Nome Completo se existir
+  const nomeExibicao = eValido(candidato.nome_completo) 
+    ? candidato.nome_completo 
+    : candidato.nome_urna;
+
   return (
     <main className="max-w-md mx-auto px-4 py-6 text-slate-100">
       <div className="bg-slate-900 rounded-3xl border border-white/10 shadow-xl p-5 flex flex-col items-center">
@@ -121,7 +131,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-slate-700 bg-slate-950 shadow-lg">
             <CandidateImage 
               candidato={candidato} 
-              alt={candidato.nome_completo || candidato.nome_urna || 'Foto do Candidato'} 
+              alt={nomeExibicao || 'Foto do Candidato'} 
               className="w-full h-full object-cover" 
             />
           </div>
@@ -129,11 +139,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
         {/* Nome Completo */}
         <h1 className="text-lg font-black text-white mt-4 text-center leading-tight">
-          {candidato.nome_completo || candidato.nome_urna}
+          {nomeExibicao}
         </h1>
 
-        {/* Nome Social (Exibido apenas se existir) */}
-        {candidato.nome_social && (
+        {/* Nome Social (Apenas se for válido e diferente de #NULO) */}
+        {eValido(candidato.nome_social) && (
           <p className="text-xs font-medium text-slate-400 mt-1 text-center">
             Nome social: <span className="text-slate-200">{candidato.nome_social}</span>
           </p>
@@ -146,7 +156,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </span>
         </div>
 
-        {/* Placar ELO e Disputas */}
+        {/* Score ELO e Disputas */}
         <div className="grid grid-cols-2 gap-3 w-full mt-5 bg-slate-950/50 border border-white/5 p-3 rounded-2xl">
           <div className="text-center border-r border-white/10 pr-2">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ELO</span>
@@ -162,15 +172,15 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Ficha Técnica (Apenas exibe os campos que existirem) */}
+        {/* Ficha Técnica */}
         <div className="w-full mt-5 space-y-2 text-xs">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ficha Técnica</h3>
 
-          {(candAtual.municipio || candAtual.uf || candidato.uf) && (
+          {(eValido(candAtual.municipio) || eValido(candAtual.uf) || eValido(candidato.uf)) && (
             <div className="flex justify-between items-center bg-slate-950/30 px-3 py-2 rounded-xl border border-white/5">
               <span className="text-slate-400">Município / UF:</span>
               <span className="font-medium text-white uppercase">
-                {candAtual.municipio ? `${candAtual.municipio} ` : ''}({candAtual.uf || candidato.uf || 'BR'})
+                {eValido(candAtual.municipio) ? `${candAtual.municipio} ` : ''}({candAtual.uf || candidato.uf || 'BR'})
               </span>
             </div>
           )}
@@ -182,34 +192,34 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
             </div>
           )}
 
-          {candidato.genero && (
+          {eValido(candidato.genero) && (
             <div className="flex justify-between items-center bg-slate-950/30 px-3 py-2 rounded-xl border border-white/5">
               <span className="text-slate-400">Gênero:</span>
               <span className="font-medium text-white capitalize">{formatarGenero(candidato.genero)}</span>
             </div>
           )}
 
-          {candidato.cor_raca && (
+          {eValido(candidato.cor_raca) && (
             <div className="flex justify-between items-center bg-slate-950/30 px-3 py-2 rounded-xl border border-white/5">
               <span className="text-slate-400">Cor / Raça:</span>
-              <span className="font-medium text-white capitalize">{candidato.cor_raca.toLowerCase()}</span>
+              <span className="font-medium text-white capitalize">{String(candidato.cor_raca).toLowerCase()}</span>
             </div>
           )}
 
-          {candAtual.ocupacao && (
+          {eValido(candAtual.ocupacao) && (
             <div className="flex justify-between items-center bg-slate-950/30 px-3 py-2 rounded-xl border border-white/5">
               <span className="text-slate-400">Ocupação:</span>
               <span className="font-medium text-white capitalize truncate max-w-[200px]">
-                {candAtual.ocupacao.toLowerCase()}
+                {String(candAtual.ocupacao).toLowerCase()}
               </span>
             </div>
           )}
 
-          {candAtual.grau_instrucao && (
+          {eValido(candAtual.grau_instrucao) && (
             <div className="flex justify-between items-center bg-slate-950/30 px-3 py-2 rounded-xl border border-white/5">
               <span className="text-slate-400">Grau de Instrução:</span>
               <span className="font-medium text-white capitalize truncate max-w-[200px]">
-                {candAtual.grau_instrucao.toLowerCase()}
+                {String(candAtual.grau_instrucao).toLowerCase()}
               </span>
             </div>
           )}
@@ -220,7 +230,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Histórico Eleitoral (Com Situação, Resultado de Turno e Nome de Urna por Mandato) */}
+        {/* Histórico Eleitoral */}
         <div className="w-full mt-5 border-t border-white/10 pt-4">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Histórico Eleitoral</h3>
 
@@ -247,7 +257,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
                       </div>
 
                       {/* Situação da Candidatura no mandato */}
-                      {cand.situacao_candidatura && (
+                      {eValido(cand.situacao_candidatura) && (
                         <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
                           {cand.situacao_candidatura}
                         </span>
@@ -259,14 +269,14 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
                         {cand.cargo} ({cand.partido})
                       </span>
                       <span className="uppercase text-[10px] text-slate-500 ml-2 whitespace-nowrap">
-                        {cand.municipio ? `${cand.municipio} - ` : ''}{cand.uf}
+                        {eValido(cand.municipio) ? `${cand.municipio} - ` : ''}{cand.uf}
                       </span>
                     </div>
 
-                    {/* Resultado do Turno (Exibido apenas se disponível) */}
-                    {cand.resultado_turno && (
+                    {/* Resultado do Turno (Ocultado se for #NULO) */}
+                    {eValido(cand.resultado_turno) && (
                       <p className="text-[10px] text-slate-400 font-medium mt-1 border-t border-white/5 pt-1">
-                        Resultado: <span className="text-slate-200 capitalize">{cand.resultado_turno.toLowerCase()}</span>
+                        Resultado: <span className="text-slate-200 capitalize">{String(cand.resultado_turno).toLowerCase()}</span>
                       </p>
                     )}
                   </div>

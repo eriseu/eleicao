@@ -3,7 +3,6 @@ import Script from 'next/script';
 import './globals.css';
 
 import FooterMenu from '@/components/layout/BottomNav';
-#import AdSenseLoader from '@/components/analytics/AdSenseLoader';
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = 'https://politica.centraleti.com.br';

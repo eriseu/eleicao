@@ -27,7 +27,6 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  // Busca de municípios para o select via API VPS
   useEffect(() => {
     if (selectedUf === 'BR') {
       setMunicipios([]);
@@ -39,7 +38,6 @@ export default function Home() {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
         if (!response.ok) {
-          console.error("Falha ao buscar municípios do VPS");
           setMunicipios([]);
           return;
         }
@@ -61,10 +59,6 @@ export default function Home() {
     void loadMunicipios();
   }, [selectedUf]);
 
-  // Regra Estrita de Escopo:
-  // - Brasil: Presidente / Vice
-  // - Estado sem município: APENAS Governador, Senador, Deputados (Sem Prefeito/Vereador)
-  // - Município Selecionado: APENAS Prefeito, Vice-Prefeito, Vereador
   const getCargosPorEscopo = useCallback(() => {
     if (selectedUf === 'BR') {
       return CARGOS_POR_ESCOPO.nacional;
@@ -96,7 +90,7 @@ export default function Home() {
       const todosCandidatosR2: Candidato[] = await response.json();
       const cargosPermitidos = getCargosPorEscopo().map(c => c.toUpperCase().trim());
 
-      // Filtro estrito por escopo e por município
+      // 1. Filtro estrito por escopo e por município
       const filtrados = todosCandidatosR2.filter((c: Candidato) => {
         const cargoCand = (c.cargo || '').toUpperCase().trim();
         const condCargo = cargosPermitidos.includes(cargoCand);
@@ -110,9 +104,25 @@ export default function Home() {
         return true;
       });
 
-      setCandidates(filtrados);
-      
-      const pair = pickRandomPair(filtrados);
+      // 2. Garante que todo objeto candidato possua a lista de 'candidaturas' para fallback
+      const candidatosComHistorico = filtrados.map((c: any) => {
+        const candidaturas = c.candidaturas || c.historico || [];
+        
+        // Se o próprio objeto principal não estiver no histórico, insere no topo
+        return {
+          ...c,
+          candidaturas: candidaturas.length > 0 ? candidaturas : [
+            {
+              foto: c.foto,
+              ano: c.ano || c.ano_eleicao,
+              uf: c.uf || selectedUf
+            }
+          ]
+        };
+      });
+
+      setCandidates(candidatosComHistorico);
+      const pair = pickRandomPair(candidatosComHistorico);
       setPar(pair);
 
     } catch (error) {

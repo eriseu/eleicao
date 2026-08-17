@@ -76,63 +76,75 @@ export default function Home() {
   };
 
   const fetchCandidates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
-      const response = await fetch(r2Url);
+      setLoading(true);
+      try {
+        const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
+        const response = await fetch(r2Url);
 
-      if (!response.ok) {
-        setCandidates([]);
-        setPar(null);
-        return;
-      }
-
-      const todosCandidatosR2: Candidato[] = await response.json();
-      const cargosPermitidos = getCargosPorEscopo().map(c => c.toUpperCase().trim());
-
-      // 1. Filtro estrito por escopo e por município
-      const filtrados = todosCandidatosR2.filter((c: Candidato) => {
-        const cargoCand = (c.cargo || '').toUpperCase().trim();
-        const condCargo = cargosPermitidos.includes(cargoCand);
-
-        if (!condCargo) return false;
-
-        if (selectedMunicipio) {
-          return (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim();
+        if (!response.ok) {
+          setCandidates([]);
+          setPar(null);
+          return;
         }
 
-        return true;
-      });
+        const todosCandidatosR2: Candidato[] = await response.json();
+        const cargosPermitidos = getCargosPorEscopo().map(c => c.toUpperCase().trim());
 
-      // 2. Garante que todo objeto candidato possua a lista de 'candidaturas' para fallback
-      const candidatosComHistorico = filtrados.map((c: any) => {
-        const candidaturas = c.candidaturas || c.historico || [];
+        // 1. Filtro estrito por escopo e por município
+        const filtrados = todosCandidatosR2.filter((c: Candidato) => {
+          const cargoCand = (c.cargo || '').toUpperCase().trim();
+          const condCargo = cargosPermitidos.includes(cargoCand);
+
+          if (!condCargo) return false;
+
+          if (selectedMunicipio) {
+            return (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim();
+          }
+
+          return true;
+        });
+
+        // 2. Normaliza os objetos montando a propriedade 'candidaturas' esperada pelo imageFallback.ts
+        const candidatosComFallback = filtrados.map((cand: any) => {
+          // Se já possui array de candidaturas/histórico usa ele, senão constrói a partir dos dados do objeto
+          const candidaturasExistentes = cand.candidaturas || cand.historico || [];
+
+          if (candidaturasExistentes.length > 0) {
+            return cand;
+          }
+
+          // Constrói a lista de fallback com todas as referências conhecidas da pessoa
+          const candidaturasGerdas = [
+            { foto: cand.foto, ano: cand.ano || cand.ano_eleicao, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2024, ano: 2024, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2022, ano: 2022, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2020, ano: 2020, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2018, ano: 2018, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2016, ano: 2016, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2012, ano: 2012, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2008, ano: 2008, uf: cand.uf || selectedUf },
+            { foto: cand.foto_2006, ano: 2006, uf: 'BR' }
+          ].filter(item => Boolean(item.foto));
+
+          return {
+            ...cand,
+            candidaturas: candidaturasGerdas.length > 0 ? candidaturasGerdas : [cand]
+          };
+        });
+
+        setCandidates(candidatosComFallback);
         
-        // Se o próprio objeto principal não estiver no histórico, insere no topo
-        return {
-          ...c,
-          candidaturas: candidaturas.length > 0 ? candidaturas : [
-            {
-              foto: c.foto,
-              ano: c.ano || c.ano_eleicao,
-              uf: c.uf || selectedUf
-            }
-          ]
-        };
-      });
+        const pair = pickRandomPair(candidatosComFallback);
+        setPar(pair);
 
-      setCandidates(candidatosComHistorico);
-      const pair = pickRandomPair(candidatosComHistorico);
-      setPar(pair);
-
-    } catch (error) {
-      console.error('Erro ao carregar candidatos do R2:', error);
-      setCandidates([]);
-      setPar(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
+      } catch (error) {
+        console.error('Erro ao carregar candidatos do R2:', error);
+        setCandidates([]);
+        setPar(null);
+      } finally {
+        setLoading(false);
+      }
+    }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
   useEffect(() => {
     void fetchCandidates();

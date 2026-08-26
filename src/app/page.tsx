@@ -257,6 +257,7 @@ export default function Home() {
                     candidato={candidato}
                     alt={candidato.nome_completo}
                     className="h-full w-full object-cover"
+                    priority={index === 0}
                   />
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent p-3 text-left">
                     <p className="truncate text-xs font-bold text-white">{candidato.nome_urna || candidato.nome_completo}</p>

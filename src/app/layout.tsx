@@ -3,6 +3,7 @@ import Script from 'next/script';
 import './globals.css';
 
 import FooterMenu from '@/components/layout/BottomNav';
+import AdSenseLoader from '@/components/analytics/AdSenseLoader';
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = 'https://politica.centraleti.com.br';
@@ -50,16 +51,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-	<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566"
-     	crossOrigin="anonymous"></script>
-      <head />
+      <head>
+        <link rel="preconnect" href="https://f.centraleti.com.br" />
+      </head>
       <body className="antialiased">
-        {/* Google Analytics */}
+        <AdSenseLoader />
         <Script
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}`}
         />
-        <Script id="google-analytics" strategy="afterInteractive">
+        <Script id="google-analytics" strategy="lazyOnload">
           {`window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());

@@ -5,9 +5,10 @@ interface CandidateImageProps {
   candidato: any;
   alt?: string;
   className?: string;
+  priority?: boolean;
 }
 
-export default function CandidateImage({ candidato, alt, className }: CandidateImageProps) {
+export default function CandidateImage({ candidato, alt, className, priority = false }: CandidateImageProps) {
   const [urls, setUrls] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -43,7 +44,8 @@ export default function CandidateImage({ candidato, alt, className }: CandidateI
       style={{ objectFit: 'cover', objectPosition: 'top center' }}
       onError={handleError}
       referrerPolicy="no-referrer"
-      loading="lazy"
+      loading={priority ? 'eager' : 'lazy'}
+      fetchPriority={priority ? 'high' : 'auto'}
     />
   );
 }

@@ -10,7 +10,7 @@ export default function PainelFotosFaltantes() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/admin/fotos-faltantes`);
+      const res = await fetch('/api/admin/fotos-faltantes', { cache: 'no-store' });
       const data = await res.json();
       setLista(data.candidatos || []);
     } catch (err) {
@@ -32,7 +32,7 @@ export default function PainelFotosFaltantes() {
     formData.append('uf', cand.uf);
     formData.append('nome_foto', cand.foto_sugerida);
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/admin/upload-foto`, {
+    const res = await fetch('/api/admin/upload-foto', {
       method: 'POST',
       body: formData,
     });

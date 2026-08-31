@@ -57,6 +57,7 @@ function RankingContent() {
   const [selectedUf, setSelectedUf] = useState(initialUf);
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
   const [activeHighlightId, setActiveHighlightId] = useState(searchParams.get('highlight') || '');
+  const initialHighlightHandledRef = useRef(false);
   const loadRequestIdRef = useRef(0);
 
   const highlightedId = searchParams.get('highlight') || '';
@@ -285,7 +286,26 @@ function RankingContent() {
     setPage(0);
   }, [selectedUf, selectedMunicipio]);
 
-  const syncRankingUrl = useCallback((preserveHighlight = true) => {
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const params = new URLSearchParams();
+    if (selectedUf) params.set('uf', selectedUf);
+    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
+
+    if (highlightedId && !initialHighlightHandledRef.current) {
+      initialHighlightHandledRef.current = true;
+      params.set('highlight', highlightedId);
+      router.replace(`/ranking?${params.toString()}`, { scroll: false });
+      return;
+    }
+
+    if (!highlightedId || initialHighlightHandledRef.current) {
+      router.replace(`/ranking?${params.toString()}`, { scroll: false });
+    }
+  }, [isMounted, selectedUf, selectedMunicipio, highlightedId, router]);
+
+  const syncRankingUrl = useCallback((preserveHighlight = false) => {
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
@@ -301,7 +321,8 @@ function RankingContent() {
 
   const handlePageChange = useCallback((nextPage: number) => {
     setPage(nextPage);
-    syncRankingUrl(true);
+    setActiveHighlightId('');
+    syncRankingUrl(false);
   }, [syncRankingUrl]);
 
   const handleShare = async () => {

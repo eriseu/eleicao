@@ -7,6 +7,7 @@ import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { AVAILABLE_UFS } from '@/constants/elections';
+import { buildMunicipioOptions, buildStateOptions } from '@/lib/municipioOptions';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -54,7 +55,7 @@ export default function DueloClient() {
     hasValidSharedUf ? (sharedUf as string) : 'BR'
   );
   const [selectedMunicipio, setSelectedMunicipio] = useState(sharedMunicipio);
-  const [municipios, setMunicipios] = useState<string[]>([]);
+  const [municipios, setMunicipios] = useState<Array<{ value: string; label: string }>>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -67,8 +68,7 @@ export default function DueloClient() {
 
   useEffect(() => {
     if (selectedUf === 'BR') {
-      setMunicipios([]);
-      setSelectedMunicipio('');
+      setMunicipios(buildStateOptions());
       return;
     }
 
@@ -81,15 +81,9 @@ export default function DueloClient() {
         }
         const data = await response.json();
 
-        const uniqueMunicipios = Array.from(
-          new Set((data || [])
-            .map((item: any) => item.municipio?.trim())
-            .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
-        ).sort() as string[];
-        
-        setMunicipios(uniqueMunicipios);
+        setMunicipios(buildMunicipioOptions(data || [], selectedUf));
       } catch (error) {
-        console.error("Erro ao carregar municípios:", error);
+        console.error('Erro ao carregar municípios:', error);
         setMunicipios([]);
       }
     }
@@ -499,16 +493,18 @@ export default function DueloClient() {
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Município</span>
+                <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">
+                  {selectedUf === 'BR' ? 'Estado' : 'Município'}
+                </span>
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedMunicipio}
                   onChange={(event) => setSelectedMunicipio(event.target.value)}
-                  disabled={isSharedDuel || selectedUf === 'BR'}
+                  disabled={isSharedDuel}
                 >
-                  <option value="">Todos</option>
-                  {municipios.map((municipio) => (
-                    <option key={municipio} value={municipio}>{municipio}</option>
+                  <option value="">{selectedUf === 'BR' ? 'Todos os Estados' : 'Todos'}</option>
+                  {municipios.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </label>

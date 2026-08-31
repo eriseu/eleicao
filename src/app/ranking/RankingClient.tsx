@@ -8,20 +8,7 @@ import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
-
-const ufToStateName: { [key: string]: string } = {
-  'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas', 'BA': 'Bahia',
-  'CE': 'Ceará', 'DF': 'Distrito Federal', 'ES': 'Espírito Santo', 'GO': 'Goiás',
-  'MA': 'Maranhão', 'MT': 'Mato Grosso', 'MS': 'Mato Grosso do Sul', 'MG': 'Minas Gerais',
-  'PA': 'Pará', 'PB': 'Paraíba', 'PR': 'Paraná', 'PE': 'Pernambuco', 'PI': 'Piauí',
-  'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte', 'RS': 'Rio Grande do Sul',
-  'RO': 'Rondônia', 'RR': 'Roraima', 'SC': 'Santa Catarina', 'SP': 'São Paulo',
-  'SE': 'Sergipe', 'TO': 'Tocantins', 'BR': 'Brasil'
-};
-
-function getStateNameFromUf(uf: string): string {
-  return ufToStateName[uf.toUpperCase()] || uf;
-}
+import { buildMunicipioOptions, buildStateOptions, getStateNameFromUf } from '@/lib/municipioOptions';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -53,7 +40,7 @@ function RankingContent() {
 
   const [ranking, setRanking] = useState<Candidato[]>([]);
   const [page, setPage] = useState(0);
-  const [municipios, setMunicipios] = useState<string[]>([]);
+  const [municipios, setMunicipios] = useState<Array<{ value: string; label: string }>>([]);
   const [selectedUf, setSelectedUf] = useState(initialUf);
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
   const [activeHighlightId, setActiveHighlightId] = useState(searchParams.get('highlight') || '');
@@ -88,26 +75,19 @@ function RankingContent() {
 
   useEffect(() => {
     if (selectedUf === 'BR') {
-      setMunicipios([]);
-      setSelectedMunicipio('');
+      setMunicipios(buildStateOptions());
       return;
     }
 
     async function loadMunicipios() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
       if (!response.ok) {
-        console.error("Falha ao buscar municípios do VPS");
+        console.error('Falha ao buscar municípios do VPS');
         setMunicipios([]);
         return;
       }
       const data = await response.json();
-
-      const uniqueMunicipios = Array.from(
-        new Set((data || [])
-          .map((item: any) => item.municipio?.trim())
-          .filter((m: string | null | undefined): m is string => Boolean(m) && m?.toUpperCase() !== selectedUf.toUpperCase()))
-      ).sort() as string[];
-      setMunicipios(uniqueMunicipios);
+      setMunicipios(buildMunicipioOptions(data || [], selectedUf));
     }
 
     void loadMunicipios();
@@ -395,7 +375,9 @@ function RankingContent() {
               </select>
             </label>
             <label className="block">
-              <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Município</span>
+              <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">
+                {selectedUf === 'BR' ? 'Estado' : 'Município'}
+              </span>
               <select
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={selectedMunicipio}
@@ -405,11 +387,10 @@ function RankingContent() {
                   setActiveHighlightId('');
                   syncRankingUrl(false);
                 }}
-                disabled={selectedUf === 'BR'}
               >
-                <option value="">Todos os Municípios</option>
-                {municipios.map((municipio) => (
-                  <option key={municipio} value={municipio}>{municipio}</option>
+                <option value="">{selectedUf === 'BR' ? 'Todos os Estados' : 'Todos os Municípios'}</option>
+                {municipios.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </label>

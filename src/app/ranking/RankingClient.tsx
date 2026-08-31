@@ -57,7 +57,6 @@ function RankingContent() {
   const [selectedUf, setSelectedUf] = useState(initialUf);
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
   const [activeHighlightId, setActiveHighlightId] = useState(searchParams.get('highlight') || '');
-  const initialHighlightHandledRef = useRef(false);
   const loadRequestIdRef = useRef(0);
 
   const highlightedId = searchParams.get('highlight') || '';
@@ -282,50 +281,27 @@ function RankingContent() {
     return () => clearTimeout(timer);
   }, [activeHighlightId, loading, ranking]);
 
-  // Mantém o highlight só no primeiro acesso marcado pela URL. Depois disso, a paginação
-  // e os filtros devem seguir o escopo atual (UF/município) sem o parâmetro highlight.
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const params = new URLSearchParams();
-    if (selectedUf) params.set('uf', selectedUf);
-    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
-
-    if (highlightedId && !initialHighlightHandledRef.current) {
-      initialHighlightHandledRef.current = true;
-      params.set('highlight', highlightedId);
-
-      const timer = setTimeout(() => {
-        const cleanParams = new URLSearchParams();
-        if (selectedUf) cleanParams.set('uf', selectedUf);
-        if (selectedMunicipio) cleanParams.set('municipio', selectedMunicipio);
-        router.replace(`/ranking?${cleanParams.toString()}`);
-        setActiveHighlightId('');
-      }, 350);
-
-      router.replace(`/ranking?${params.toString()}`);
-      return () => clearTimeout(timer);
-    }
-
-    router.replace(`/ranking?${params.toString()}`);
-  }, [isMounted, selectedUf, selectedMunicipio, highlightedId, router]);
-
   useEffect(() => {
     setPage(0);
   }, [selectedUf, selectedMunicipio]);
 
-  const syncRankingUrl = useCallback((preserveHighlight = false) => {
+  const syncRankingUrl = useCallback((preserveHighlight = true) => {
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
-    if (preserveHighlight && highlightedId) params.set('highlight', highlightedId);
-    router.replace(`/ranking?${params.toString()}`);
-  }, [highlightedId, router, selectedMunicipio, selectedUf]);
+    if (preserveHighlight && activeHighlightId) params.set('highlight', activeHighlightId);
+
+    const nextUrl = `/ranking?${params.toString()}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (currentUrl !== nextUrl) {
+      router.replace(nextUrl, { scroll: false });
+    }
+  }, [activeHighlightId, router, selectedMunicipio, selectedUf]);
 
   const handlePageChange = useCallback((nextPage: number) => {
     setPage(nextPage);
-    setActiveHighlightId('');
-    syncRankingUrl(false);
+    syncRankingUrl(true);
   }, [syncRankingUrl]);
 
   const handleShare = async () => {

@@ -1,4 +1,5 @@
 import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { gunzipSync } from 'node:zlib';
 
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 1) {
@@ -106,7 +107,11 @@ async function readObjectBody(s3Client, key) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
 
-  return Buffer.concat(chunks).toString('utf8');
+  const rawBuffer = Buffer.concat(chunks);
+  if (!rawBuffer.length) return null;
+
+  const normalized = response.ContentEncoding === 'gzip' ? gunzipSync(rawBuffer) : rawBuffer;
+  return normalized.toString('utf8');
 }
 
 async function repairObject(s3Client, key) {

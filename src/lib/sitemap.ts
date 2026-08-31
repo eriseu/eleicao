@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { gunzipSync } from 'node:zlib';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { safeJsonParse } from '@/lib/robustJson';
 
@@ -59,11 +60,19 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
     });
 
     const response = await r2.send(command);
-    const bodyContents = await response.Body?.transformToString();
+    const chunks: Uint8Array[] = [];
 
-    if (!bodyContents) {
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    const rawBytes = Buffer.concat(chunks);
+    if (!rawBytes.length) {
       throw new Error(`O arquivo '${objectKey}' veio vazio do R2.`);
     }
+
+    const decoded = response.ContentEncoding === 'gzip' ? gunzipSync(rawBytes) : rawBytes;
+    const bodyContents = decoded.toString('utf8');
 
     const data = safeJsonParse(bodyContents);
 

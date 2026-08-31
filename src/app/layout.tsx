@@ -52,14 +52,17 @@ export default function RootLayout({
     <html lang="pt-BR">
       <head>
         <link rel="preconnect" href="https://f.centraleti.com.br" />
-	<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566" crossOrigin="anonymous"></script>
+	      <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566" 
+        crossOrigin="anonymous"></script>
       </head>
       <body className="antialiased">
         <Script
+          id="google-analytics-src"
           strategy="lazyOnload"
           src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}`}
+          data-cfasync="false"
         />
-        <Script id="google-analytics" strategy="lazyOnload">
+        <Script id="google-analytics" strategy="lazyOnload" data-cfasync="false">
           {`window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());

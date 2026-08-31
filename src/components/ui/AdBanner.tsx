@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 interface AdProps {
   slot: string;
@@ -8,21 +8,14 @@ interface AdProps {
 }
 
 export default function AdBanner({ slot, format = 'auto' }: AdProps) {
-  const [isMounted, setIsMounted] = useState(false);
-
   useEffect(() => {
-    setIsMounted(true);
     try {
-      // @ts-ignore
+      // @ts-expect-error AdSense adiciona adsbygoogle ao objeto window em runtime.
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch (err) {
       console.warn('AdSense não pôde ser inicializado:', err);
     }
   }, []);
-
-  if (!isMounted) {
-    return <div style={{ minHeight: '100px' }} />;
-  }
 
   return (
     <div 
@@ -32,7 +25,7 @@ export default function AdBanner({ slot, format = 'auto' }: AdProps) {
       <ins
         className="adsbygoogle"
         style={{ display: 'block', minWidth: '250px', minHeight: '90px' }}
-        data-ad-client={process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID}
+        data-ad-client="ca-pub-0388943655208566"
         data-ad-slot={slot}
         data-ad-format={format}
         data-full-width-responsive="true"

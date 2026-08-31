@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
@@ -56,8 +56,10 @@ function RankingContent() {
   const [municipios, setMunicipios] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState(initialUf);
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
-  
-  // Atualiza o highlight dinamicamente a partir dos searchParams
+  const [activeHighlightId, setActiveHighlightId] = useState(searchParams.get('highlight') || '');
+  const initialHighlightHandledRef = useRef(false);
+  const loadRequestIdRef = useRef(0);
+
   const highlightedId = searchParams.get('highlight') || '';
   
   const [loading, setLoading] = useState(false);
@@ -68,12 +70,20 @@ function RankingContent() {
   useEffect(() => {
     const ufParam = searchParams.get('uf')?.toUpperCase();
     if (ufParam && (AVAILABLE_UFS as readonly string[]).includes(ufParam)) {
-      setSelectedUf(ufParam as any); // ou `ufParam as typeof AVAILABLE_UFS[number]`
+      setSelectedUf(ufParam as any);
     }
     const munParam = searchParams.get('municipio');
     if (munParam !== null) {
       setSelectedMunicipio(munParam);
     }
+
+    const nextHighlightId = searchParams.get('highlight') || '';
+    if (nextHighlightId) {
+      setActiveHighlightId(nextHighlightId);
+      return;
+    }
+
+    setActiveHighlightId('');
   }, [searchParams]);
 
   useEffect(() => {
@@ -245,44 +255,78 @@ function RankingContent() {
     if (!isMounted) return;
 
     const loadRanking = async () => {
+      const currentRequestId = ++loadRequestIdRef.current;
       setLoading(true);
       const cargos = getCargosPorEscopo();
 
-      const rankingData = await fetchRankingData(page, cargos, highlightedId);
+      const rankingData = await fetchRankingData(page, cargos, activeHighlightId);
+      if (currentRequestId !== loadRequestIdRef.current) return;
+
       setRanking(rankingData);
       setLoading(false);
     };
 
     void loadRanking();
-  }, [isMounted, highlightedId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
+  }, [isMounted, activeHighlightId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
-  // Rola suavemente até o elemento destacado
+  // Rola suavemente até o elemento destacado apenas quando o acesso veio com highlight
   useEffect(() => {
-    if (!highlightedId || loading) return;
+    if (!activeHighlightId || loading) return;
     const timer = setTimeout(() => {
-      document.getElementById(`ranking-${highlightedId}`)?.scrollIntoView({
+      document.getElementById(`ranking-${activeHighlightId}`)?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [highlightedId, loading, ranking]);
+  }, [activeHighlightId, loading, ranking]);
 
-  // Preserva os parâmetros da URL (incluindo highlight, se houver)
+  // Mantém o highlight só no primeiro acesso marcado pela URL. Depois disso, a paginação
+  // e os filtros devem seguir o escopo atual (UF/município) sem o parâmetro highlight.
   useEffect(() => {
     if (!isMounted) return;
+
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
-    if (highlightedId) params.set('highlight', highlightedId);
-    
+
+    if (highlightedId && !initialHighlightHandledRef.current) {
+      initialHighlightHandledRef.current = true;
+      params.set('highlight', highlightedId);
+
+      const timer = setTimeout(() => {
+        const cleanParams = new URLSearchParams();
+        if (selectedUf) cleanParams.set('uf', selectedUf);
+        if (selectedMunicipio) cleanParams.set('municipio', selectedMunicipio);
+        router.replace(`/ranking?${cleanParams.toString()}`);
+        setActiveHighlightId('');
+      }, 350);
+
+      router.replace(`/ranking?${params.toString()}`);
+      return () => clearTimeout(timer);
+    }
+
     router.replace(`/ranking?${params.toString()}`);
   }, [isMounted, selectedUf, selectedMunicipio, highlightedId, router]);
 
   useEffect(() => {
     setPage(0);
   }, [selectedUf, selectedMunicipio]);
+
+  const syncRankingUrl = useCallback((preserveHighlight = false) => {
+    const params = new URLSearchParams();
+    if (selectedUf) params.set('uf', selectedUf);
+    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
+    if (preserveHighlight && highlightedId) params.set('highlight', highlightedId);
+    router.replace(`/ranking?${params.toString()}`);
+  }, [highlightedId, router, selectedMunicipio, selectedUf]);
+
+  const handlePageChange = useCallback((nextPage: number) => {
+    setPage(nextPage);
+    setActiveHighlightId('');
+    syncRankingUrl(false);
+  }, [syncRankingUrl]);
 
   const handleShare = async () => {
     const region = selectedMunicipio || getStateNameFromUf(selectedUf);
@@ -343,6 +387,8 @@ function RankingContent() {
                   setSelectedUf(event.target.value);
                   setSelectedMunicipio('');
                   setPage(0);
+                  setActiveHighlightId('');
+                  syncRankingUrl(false);
                 }}
               >
                 <option value="BR">Brasil</option>
@@ -359,6 +405,8 @@ function RankingContent() {
                 onChange={(event) => {
                   setSelectedMunicipio(event.target.value);
                   setPage(0);
+                  setActiveHighlightId('');
+                  syncRankingUrl(false);
                 }}
                 disabled={selectedUf === 'BR'}
               >
@@ -379,6 +427,8 @@ function RankingContent() {
                   setSelectedUf('BR');
                   setSelectedMunicipio('');
                   setPage(0);
+                  setActiveHighlightId('');
+                  syncRankingUrl(false);
                 }}
                 disabled={selectedUf === 'BR' && selectedMunicipio === ''}
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -401,7 +451,7 @@ function RankingContent() {
                 key={cand.id}
                 id={`ranking-${cand.id}`}
                 className={`group flex items-center gap-4 rounded-[28px] border p-4 transition ${
-                  cand.id === highlightedId
+                  cand.id === activeHighlightId
                     ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-400/40'
                     : 'border-white/10 bg-slate-900/80 hover:border-slate-500 hover:bg-slate-800'
                 }`}
@@ -413,7 +463,7 @@ function RankingContent() {
                   <div className="flex items-center justify-between gap-3">
                     <p className="truncate text-sm font-bold text-white">{cand.nome_completo}</p>
                     <div className="flex items-center gap-2">
-                      {cand.id === highlightedId && (
+                      {cand.id === activeHighlightId && (
                         <span className="hidden rounded-full bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase text-slate-950 sm:inline">Destaque</span>
                       )}
                       <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * ITEMS_PER_PAGE + index + 1}º</span>
@@ -438,7 +488,7 @@ function RankingContent() {
         <div className="mt-6 flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
           <button
             disabled={page === 0}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => handlePageChange(Math.max(page - 1, 0))}
             className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             Anterior
@@ -446,7 +496,7 @@ function RankingContent() {
           <span className="font-bold text-white">Página {page + 1}</span>
           <button
             disabled={!hasMore || ranking.length < ITEMS_PER_PAGE}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => handlePageChange(page + 1)}
             className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             Próxima

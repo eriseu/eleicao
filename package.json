@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "repair:r2-jsons": "node scripts/repair-r2-jsons.mjs",
+    "repair:r2-jsons:dry": "node scripts/repair-r2-jsons.mjs --dry-run=true"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1109.0",

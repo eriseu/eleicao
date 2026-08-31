@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { AVAILABLE_UFS } from '@/constants/elections';
+import { safeJsonParse } from '@/lib/robustJson';
 
 export const SITEMAP_PAGE_SIZE = 10000;
 
@@ -64,7 +65,7 @@ export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
       throw new Error(`O arquivo '${objectKey}' veio vazio do R2.`);
     }
 
-    const data = JSON.parse(bodyContents);
+    const data = safeJsonParse(bodyContents);
 
     if (!Array.isArray(data)) {
       throw new Error(`JSON retornado em '${objectKey}' não é uma lista válida.`);

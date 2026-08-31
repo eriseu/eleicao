@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Candidato } from '@/types';
+import { fetchJsonSafely } from '@/lib/robustJson';
 
 interface CandidateAutocompleteProps {
   label: string;
@@ -71,13 +72,10 @@ export default function CandidateAutocomplete({
       }
 
       try {
-        const res = await fetch(`${R2_URL}/candidatos/${ufKey}.json`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) {
-            cacheCandidatosUf[ufKey] = data;
-            candidatosUfRef.current = data;
-          }
+        const data = await fetchJsonSafely<any[]>(`${R2_URL}/candidatos/${ufKey}.json`);
+        if (!cancelled && Array.isArray(data)) {
+          cacheCandidatosUf[ufKey] = data;
+          candidatosUfRef.current = data;
         }
       } catch (err) {
         console.error('Erro ao carregar candidatos do R2:', err);

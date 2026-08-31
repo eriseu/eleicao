@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import CandidateImage from '@/components/ui/CandidateImage';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import type { Candidato } from '@/types';
+import { fetchJsonSafely } from '@/lib/robustJson';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -79,15 +80,14 @@ export default function Home() {
       setLoading(true);
       try {
         const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
-        const response = await fetch(r2Url);
+        const todosCandidatosR2 = await fetchJsonSafely<Candidato[]>(r2Url);
 
-        if (!response.ok) {
+        if (!todosCandidatosR2 || !Array.isArray(todosCandidatosR2)) {
           setCandidates([]);
           setPar(null);
           return;
         }
 
-        const todosCandidatosR2: Candidato[] = await response.json();
         const cargosPermitidos = getCargosPorEscopo().map(c => c.toUpperCase().trim());
 
         // 1. Filtro estrito por escopo e por município

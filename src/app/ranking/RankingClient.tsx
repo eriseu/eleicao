@@ -11,7 +11,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, buildStateOptions, getStateNameFromUf, STATE_CAPITAIS } from '@/lib/municipioOptions';
-import { buildShortLinkUrl } from '@/lib/shortLink';
+import { createShortLinkUrl } from '@/lib/shortLink';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -312,7 +312,7 @@ function RankingContent() {
       shareUrl.searchParams.delete('highlight');
 
       const targetUrl = shareUrl.pathname + shareUrl.search + shareUrl.hash;
-      const shortUrl = buildShortLinkUrl(targetUrl);
+      const shortUrl = await createShortLinkUrl(targetUrl);
 
       console.log('[Ranking Share] Target:', targetUrl);
       console.log('[Ranking Share] Short URL:', shortUrl);
@@ -337,7 +337,7 @@ function RankingContent() {
         const shareUrl = new URL(window.location.href);
         shareUrl.searchParams.delete('highlight');
         const targetUrl = shareUrl.pathname + shareUrl.search + shareUrl.hash;
-        const shortUrl = buildShortLinkUrl(targetUrl);
+        const shortUrl = await createShortLinkUrl(targetUrl);
         
         await navigator.clipboard.writeText(shortUrl);
         setShareFeedback('✅ Link copiado para a área de transferência!');

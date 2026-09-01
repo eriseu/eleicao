@@ -10,7 +10,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, buildStateOptions, normalizeText, STATE_CAPITAIS } from '@/lib/municipioOptions';
-import { buildShortLinkUrl } from '@/lib/shortLink';
+import { createShortLinkUrl } from '@/lib/shortLink';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -497,7 +497,7 @@ export default function DueloClient() {
       console.log('[Share] Target URL:', targetUrl);
       
       console.log('[Share] Gerando URL curta...');
-      const shareUrl = buildShortLinkUrl(targetUrl);
+      const shareUrl = await createShortLinkUrl(targetUrl);
       console.log('[Share] Short URL gerada:', shareUrl);
       
       if (!shareUrl || shareUrl.length < 10) {

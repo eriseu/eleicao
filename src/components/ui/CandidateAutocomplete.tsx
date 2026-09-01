@@ -32,6 +32,7 @@ const CARGOS_POR_ESCOPO = {
 
 // Cache local em memória para não baixar o JSON do R2 repetidas vezes na mesma sessão
 const cacheCandidatosUf: Record<string, any[]> = {};
+const cacheCandidatosCompletos: Record<string, any[]> = {};
 
 function candidateLabel(candidate: Candidato) {
   const name = candidate.nome_urna || candidate.nome_completo;
@@ -136,7 +137,7 @@ export default function CandidateAutocomplete({
       };
 
       // Filtra direto na lista em memória vinda do R2 usando a busca tolerante a acentos
-      const filtrados = candidatosUfRef.current.filter((c: any) => {
+      const filtrarCandidatos = (lista: any[]) => lista.filter((c: any) => {
         if (c.id === excludeId) return false;
 
         const cargoCandidato = (c.cargo || '').toUpperCase().trim();
@@ -155,12 +156,32 @@ export default function CandidateAutocomplete({
         return matchCompleto || matchUrna;
       });
 
-      // Mapeia para o formato esperado pelo componente
-      const mapped: Candidato[] = filtratesMap(filtrados);
+      const filtrados = filtrarCandidatos(candidatosUfRef.current);
 
-      setResults(mapped.slice(0, 20));
-      setLoading(false);
-      setOpen(true);
+      const concluirBusca = (lista: any[]) => {
+        const mapped: Candidato[] = filtratesMap(lista);
+
+        setResults(mapped.slice(0, 20));
+        setLoading(false);
+        setOpen(true);
+      };
+
+      if (filtrados.length > 0 || cacheCandidatosCompletos[uf.toUpperCase()]) {
+        concluirBusca(filtrados.length > 0 ? filtrados : filtrarCandidatos(cacheCandidatosCompletos[uf.toUpperCase()]));
+        return;
+      }
+
+      void fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidatos-completos?uf=${encodeURIComponent(uf.toUpperCase())}`)
+        .then((response) => response.ok ? response.json() : [])
+        .then((data) => {
+          const completos = Array.isArray(data) ? data : [];
+          cacheCandidatosCompletos[uf.toUpperCase()] = completos;
+          concluirBusca(filtrarCandidatos(completos));
+        })
+        .catch((error) => {
+          console.error('Erro ao carregar candidatos completos:', error);
+          concluirBusca([]);
+        });
     }, 200);
 
     return () => window.clearTimeout(timeout);

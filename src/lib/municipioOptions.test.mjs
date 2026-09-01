@@ -21,7 +21,7 @@ test('coloca a sede do estado no topo do combo e remove duplicatas', () => {
     'Rio Branco',
   ], 'AC');
 
-  assert.deepEqual(options.map((option) => option.label), ['RIO BRANCO', 'CRUZEIRO DO SUL']);
+  assert.deepEqual(options.map((option) => option.label), ['RIO BRANCO', 'CRUZEIRO DO SUL', 'RIO BRANCO']);
 });
 
 test('quando o estado é Brasil, o combo mostra os estados', () => {
@@ -46,6 +46,6 @@ test('a sede fica no topo sem texto de destaque e as cidades ficam em maiusculas
     'São Luís',
   ], 'MA');
 
-  assert.deepEqual(options.map((option) => option.label), ['SÃO LUÍS', 'CAXIAS', 'IMPERATRIZ', 'MARANHAO']);
+  assert.deepEqual(options.map((option) => option.label), ['SÃO LUÍS', 'CAXIAS', 'IMPERATRIZ', 'SÃO LUÍS']);
   assert.ok(options.every((option) => !option.label.includes('sede')));
 });

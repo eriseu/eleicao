@@ -404,12 +404,12 @@ function RankingContent() {
                 }}
               >
                 <option value="">{selectedUf === 'BR' ? 'Todos os Estados' : 'Todos os Municípios'}</option>
-                {municipios.map((option) => {
+                {municipios.map((option, index) => {
                   const isCapital = selectedUf !== 'BR' && option.value.toUpperCase() === STATE_CAPITAIS[selectedUf.toUpperCase()]?.toUpperCase();
 
                   return (
                     <option
-                      key={option.value}
+                      key={`${option.value}-${index}`}
                       value={option.value}
                       style={isCapital ? { color: '#fbbf24' } : undefined}
                     >

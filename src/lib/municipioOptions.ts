@@ -116,12 +116,14 @@ export function normalizeMunicipioOption(value: string | null | undefined, uf: s
   if (!raw) return '';
 
   const upper = raw.toUpperCase();
-  if (upper === stateCode || upper === stateName) return '';
-  if (upper === `${stateCode} ${stateName}`) return '';
+  const normalizedUpper = normalizeText(raw);
+  const normalizedStateName = normalizeText(getStateNameFromUf(uf));
+  if (upper === stateCode || normalizedUpper === normalizedStateName) return '';
+  if (normalizedUpper === normalizeText(`${stateCode} ${getStateNameFromUf(uf)}`)) return '';
 
   if (stateCode && upper.startsWith(`${stateCode} `)) {
     const withoutCode = raw.slice(stateCode.length).trim();
-    return withoutCode && withoutCode.toUpperCase() !== stateName ? withoutCode : '';
+    return withoutCode && normalizeText(withoutCode) !== normalizedStateName ? withoutCode : '';
   }
 
   return raw;
@@ -136,24 +138,23 @@ export function buildMunicipioOptions(rawMunicipios: Array<string | { municipio?
     .filter((municipio): municipio is string => Boolean(municipio) && municipio.trim() !== '')
     .map((municipio) => municipio.trim());
 
-  const uniqueMunicipios = Array.from(new Set(normalizedMunicipios));
+  const uniqueMunicipios = Array.from(
+    new Map(normalizedMunicipios.map((municipio) => [normalizeText(municipio), municipio])).values(),
+  );
 
-  const options = uniqueMunicipios
+  const sortedOptions = uniqueMunicipios
     .map((municipio) => ({
       value: municipio,
       label: municipio.toUpperCase(),
-      isCapital: capital ? normalizeText(municipio) === normalizeText(capital) : false,
     }))
-    .sort((a, b) => {
-      if (a.isCapital && !b.isCapital) return -1;
-      if (!a.isCapital && b.isCapital) return 1;
-      return a.label.localeCompare(b.label, 'pt-BR');
-    })
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
     .map(({ value, label }) => ({ value, label }));
 
-  return options.filter(
-    (option, index, arr) => arr.findIndex((entry) => entry.value.toUpperCase() === option.value.toUpperCase()) === index,
-  );
+  const capitalOptions = capital
+    ? [{ value: capital, label: capital.toUpperCase() }, ...sortedOptions]
+    : sortedOptions;
+
+  return capitalOptions;
 }
 
 export function buildStateOptions(): SelectOption[] {

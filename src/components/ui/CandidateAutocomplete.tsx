@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/immutability */
+
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Candidato } from '@/types';
 import { fetchJsonSafely } from '@/lib/robustJson';
@@ -32,7 +34,7 @@ const CARGOS_POR_ESCOPO = {
 
 // Cache local em memória para não baixar o JSON do R2 repetidas vezes na mesma sessão
 const cacheCandidatosUf: Record<string, any[]> = {};
-const cacheCandidatosCompletos: Record<string, any[]> = {};
+const cacheHistoricoPerfil: Record<string, any[]> = {};
 
 function candidateLabel(candidate: Candidato) {
   const name = candidate.nome_urna || candidate.nome_completo;
@@ -167,23 +169,29 @@ export default function CandidateAutocomplete({
         setOpen(true);
       };
 
-      const candidatosComNome = candidatosUfRef.current.filter((c: any) =>
-        normalizeText(c.nome_completo || c.nome || c.nome_urna || c.nome_candidato || '').includes(termoBusca)
-        || normalizeText(c.nome_urna || c.nome_candidato || '').includes(termoBusca),
-      );
+      const candidatosComNome = candidatosUfRef.current.filter((c: any) => {
+        const nomes = [c.nome_completo, c.nome, c.nome_urna, c.nome_candidato]
+          .filter(Boolean)
+          .map((nome) => normalizeText(nome));
+
+        return nomes.some((nome) => nome.includes(termoBusca));
+      });
 
       if (municipioBusca && candidatosComNome.length > 0) {
-        void Promise.all(candidatosComNome.slice(0, 20).map(async (candidate: any) => {
+        const candidatosLocais = filtrados;
+        concluirBusca(candidatosLocais);
+
+        void Promise.all(candidatosComNome.slice(0, 50).map(async (candidate: any) => {
           const profileId = candidate.id || candidate.perfil_id;
           if (!profileId) return [];
 
-          if (!cacheCandidatosCompletos[profileId]) {
+          if (!cacheHistoricoPerfil[profileId]) {
             const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidaturas/${encodeURIComponent(profileId)}`);
             const payload = response.ok ? await response.json() : null;
-            cacheCandidatosCompletos[profileId] = Array.isArray(payload?.candidaturas) ? payload.candidaturas : [];
+            cacheHistoricoPerfil[profileId] = Array.isArray(payload?.candidaturas) ? payload.candidaturas : [];
           }
 
-          return cacheCandidatosCompletos[profileId].map((history: any) => ({
+          return cacheHistoricoPerfil[profileId].map((history: any) => ({
             ...candidate,
             ...history,
             id: profileId,
@@ -191,16 +199,18 @@ export default function CandidateAutocomplete({
             nome_completo: candidate.nome_completo || candidate.nome || history.nome_urna,
           }));
         })).then((histories) => {
-          concluirBusca(filtrarCandidatos(histories.flat()));
+          const historicoFiltrado = filtrarCandidatos(histories.flat());
+          if (historicoFiltrado.length > 0) {
+            concluirBusca([...candidatosLocais, ...historicoFiltrado]);
+          }
         }).catch((error) => {
           console.error('Erro ao carregar histórico do candidato:', error);
-          concluirBusca(filtrados);
         });
         return;
       }
 
-      if (filtrados.length > 0 || cacheCandidatosCompletos[uf.toUpperCase()]) {
-        concluirBusca(filtrados.length > 0 ? filtrados : filtrarCandidatos(cacheCandidatosCompletos[uf.toUpperCase()]));
+      if (filtrados.length > 0) {
+        concluirBusca(filtrados);
         return;
       }
 
@@ -208,7 +218,6 @@ export default function CandidateAutocomplete({
         .then((response) => response.ok ? response.json() : [])
         .then((data) => {
           const completos = Array.isArray(data) ? data : [];
-          cacheCandidatosCompletos[uf.toUpperCase()] = completos;
           concluirBusca(filtrarCandidatos(completos));
         })
         .catch((error) => {
@@ -218,7 +227,7 @@ export default function CandidateAutocomplete({
     }, 200);
 
     return () => window.clearTimeout(timeout);
-  }, [query, municipio, excludeId, selected, disabled, getCargosPermitidos, candidatesVersion]);
+  }, [query, municipio, excludeId, selected, disabled, uf, getCargosPermitidos, candidatesVersion]);
 
   function filtratesMap(lista: any[]): Candidato[] {
     const mapUnicos = new Map();

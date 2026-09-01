@@ -111,8 +111,6 @@ export function getStateNameFromUf(uf: string): string {
 export function normalizeMunicipioOption(value: string | null | undefined, uf: string): string {
   const raw = String(value ?? '').trim().replace(/\s+/g, ' ');
   const stateCode = uf?.toUpperCase();
-  const stateName = getStateNameFromUf(uf).toUpperCase();
-
   if (!raw) return '';
 
   const upper = raw.toUpperCase();

@@ -10,7 +10,6 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, buildStateOptions, normalizeText, STATE_CAPITAIS } from '@/lib/municipioOptions';
-import { createShortLinkUrl } from '@/lib/shortLink';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -494,21 +493,19 @@ export default function DueloClient() {
       }
 
       const targetUrl = `/duelo?${params.toString()}`;
+      const shareUrl = new URL(targetUrl, process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).toString();
       console.log('[Share] Target URL:', targetUrl);
-      
-      console.log('[Share] Gerando URL curta...');
-      const shareUrl = await createShortLinkUrl(targetUrl);
-      console.log('[Share] Short URL gerada:', shareUrl);
-      
+      console.log('[Share] Share URL:', shareUrl);
+
       if (!shareUrl || shareUrl.length < 10) {
-        throw new Error(`URL curta inválida: ${shareUrl}`);
+        throw new Error(`URL inválida: ${shareUrl}`);
       }
 
       console.log('[Share] Copiando para clipboard...');
       await navigator.clipboard.writeText(shareUrl);
       console.log('[Share] ✅ Sucesso!');
       
-      setFeedback('✅ Link curto copiado para compartilhar!');
+      setFeedback('✅ Link copiado para compartilhar!');
       setTimeout(() => setFeedback(''), 4000);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

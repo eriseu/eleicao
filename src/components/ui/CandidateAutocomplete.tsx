@@ -123,26 +123,34 @@ export default function CandidateAutocomplete({
 
       const termoBusca = normalizeText(sanitizedTerm);
       const cargosPermitidos = getCargosPermitidos();
+      const municipioBusca = normalizeText(municipio);
+
+      const getMunicipioCandidate = (c: any): string => {
+        const values = [
+          c?.municipio,
+          c?.ultima_candidatura?.municipio,
+          c?.candidaturas?.map((item: any) => item?.municipio),
+        ].flat();
+
+        return values.find((value) => typeof value === 'string' && value.trim() !== '') || '';
+      };
 
       // Filtra direto na lista em memória vinda do R2 usando a busca tolerante a acentos
       const filtrados = candidatosUfRef.current.filter((c: any) => {
         if (c.id === excludeId) return false;
 
-        // 1. FILTRO DE CARGO POR ESCOPO (Correção principal)
         const cargoCandidato = (c.cargo || '').toUpperCase().trim();
         const cargoValido = cargosPermitidos.some(
           (cargo) => cargo.toUpperCase().trim() === cargoCandidato
         );
         if (!cargoValido) return false;
 
-        // 2. Filtro opcional por município se informado
-        if (municipio && c.municipio && normalizeText(c.municipio) !== normalizeText(municipio)) {
+        if (municipioBusca && getMunicipioCandidate(c) && normalizeText(getMunicipioCandidate(c)) !== municipioBusca) {
           return false;
         }
 
-        // 3. Compara ignorando acentos e maiúsculas/minúsculas tanto no nome completo quanto na urna
         const matchCompleto = normalizeText(c.nome_completo).includes(termoBusca);
-        const matchUrna = normalizeText(c.nome_urna).includes(termoBusca);
+        const matchUrna = normalizeText(c.nome_urna || '').includes(termoBusca);
 
         return matchCompleto || matchUrna;
       });

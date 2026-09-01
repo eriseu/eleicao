@@ -138,20 +138,20 @@ export function buildMunicipioOptions(rawMunicipios: Array<string | { municipio?
 
   const uniqueMunicipios = Array.from(new Set(normalizedMunicipios));
 
-  const sorted = uniqueMunicipios
-    .filter((municipio) => municipio.toUpperCase() !== capital?.toUpperCase())
-    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const options = uniqueMunicipios
+    .map((municipio) => ({
+      value: municipio,
+      label: municipio.toUpperCase(),
+      isCapital: capital ? normalizeText(municipio) === normalizeText(capital) : false,
+    }))
+    .sort((a, b) => {
+      if (a.isCapital && !b.isCapital) return -1;
+      if (!a.isCapital && b.isCapital) return 1;
+      return a.label.localeCompare(b.label, 'pt-BR');
+    })
+    .map(({ value, label }) => ({ value, label }));
 
-  const capitalOption = capital
-    ? [{ value: capital, label: capital.toUpperCase() }]
-    : [];
-
-  const municipalityOptions = sorted.map((municipio) => ({
-    value: municipio,
-    label: municipio.toUpperCase(),
-  }));
-
-  return [...capitalOption, ...municipalityOptions].filter(
+  return options.filter(
     (option, index, arr) => arr.findIndex((entry) => entry.value.toUpperCase() === option.value.toUpperCase()) === index,
   );
 }

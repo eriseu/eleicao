@@ -274,18 +274,15 @@ function RankingContent() {
     const params = new URLSearchParams();
     if (selectedUf) params.set('uf', selectedUf);
     if (selectedMunicipio) params.set('municipio', selectedMunicipio);
+    if (activeHighlightId) params.set('highlight', activeHighlightId);
 
-    if (highlightedId && !initialHighlightHandledRef.current) {
-      initialHighlightHandledRef.current = true;
-      params.set('highlight', highlightedId);
-      router.replace(`/ranking?${params.toString()}`, { scroll: false });
-      return;
-    }
+    const nextUrl = `/ranking?${params.toString()}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
 
-    if (!highlightedId || initialHighlightHandledRef.current) {
-      router.replace(`/ranking?${params.toString()}`, { scroll: false });
+    if (currentUrl !== nextUrl) {
+      router.replace(nextUrl, { scroll: false });
     }
-  }, [isMounted, selectedUf, selectedMunicipio, highlightedId, router]);
+  }, [isMounted, selectedUf, selectedMunicipio, activeHighlightId, router]);
 
   const syncRankingUrl = useCallback((preserveHighlight = false) => {
     const params = new URLSearchParams();

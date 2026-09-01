@@ -144,5 +144,14 @@ export default async function ShortLinkPage({ params }: PageProps) {
   }
 
   const resolved = await resolveShortLink(target);
+
+  if (!resolved.url || resolved.url === '/') {
+    notFound();
+  }
+
+  if (process.env.NEXT_PUBLIC_SITE_URL && resolved.url.startsWith('/')) {
+    redirect(`${process.env.NEXT_PUBLIC_SITE_URL}${resolved.url}`);
+  }
+
   redirect(resolved.url);
 }

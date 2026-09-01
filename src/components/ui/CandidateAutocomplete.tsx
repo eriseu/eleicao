@@ -149,9 +149,7 @@ export default function CandidateAutocomplete({
         );
         if (!cargoValido) return false;
 
-        if (municipioBusca && getMunicipioCandidate(c) && normalizeText(getMunicipioCandidate(c)) !== municipioBusca) {
-          return false;
-        }
+        if (municipioBusca && normalizeText(getMunicipioCandidate(c)) !== municipioBusca) return false;
 
         const matchCompleto = normalizeText(c.nome_completo || c.nome || '').includes(termoBusca);
         const matchUrna = normalizeText(c.nome_urna || c.nome_candidato || '').includes(termoBusca);
@@ -168,6 +166,38 @@ export default function CandidateAutocomplete({
         setLoading(false);
         setOpen(true);
       };
+
+      const candidatosComNome = candidatosUfRef.current.filter((c: any) =>
+        normalizeText(c.nome_completo || c.nome || c.nome_urna || c.nome_candidato || '').includes(termoBusca)
+        || normalizeText(c.nome_urna || c.nome_candidato || '').includes(termoBusca),
+      );
+
+      if (municipioBusca && candidatosComNome.length > 0) {
+        void Promise.all(candidatosComNome.slice(0, 20).map(async (candidate: any) => {
+          const profileId = candidate.id || candidate.perfil_id;
+          if (!profileId) return [];
+
+          if (!cacheCandidatosCompletos[profileId]) {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidaturas/${encodeURIComponent(profileId)}`);
+            const payload = response.ok ? await response.json() : null;
+            cacheCandidatosCompletos[profileId] = Array.isArray(payload?.candidaturas) ? payload.candidaturas : [];
+          }
+
+          return cacheCandidatosCompletos[profileId].map((history: any) => ({
+            ...candidate,
+            ...history,
+            id: profileId,
+            perfil_id: profileId,
+            nome_completo: candidate.nome_completo || candidate.nome || history.nome_urna,
+          }));
+        })).then((histories) => {
+          concluirBusca(filtrarCandidatos(histories.flat()));
+        }).catch((error) => {
+          console.error('Erro ao carregar histórico do candidato:', error);
+          concluirBusca(filtrados);
+        });
+        return;
+      }
 
       if (filtrados.length > 0 || cacheCandidatosCompletos[uf.toUpperCase()]) {
         concluirBusca(filtrados.length > 0 ? filtrados : filtrarCandidatos(cacheCandidatosCompletos[uf.toUpperCase()]));

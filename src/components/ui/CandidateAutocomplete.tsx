@@ -52,6 +52,7 @@ export default function CandidateAutocomplete({
   const [results, setResults] = useState<Candidato[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [candidatesVersion, setCandidatesVersion] = useState(0);
 
   // Referência para guardar a lista bruta do estado atual
   const candidatosUfRef = useRef<any[]>([]);
@@ -70,6 +71,7 @@ export default function CandidateAutocomplete({
       const ufKey = uf.toUpperCase();
       if (cacheCandidatosUf[ufKey]) {
         candidatosUfRef.current = cacheCandidatosUf[ufKey];
+        setCandidatesVersion((version) => version + 1);
         return;
       }
 
@@ -78,6 +80,7 @@ export default function CandidateAutocomplete({
         if (!cancelled && Array.isArray(data)) {
           cacheCandidatosUf[ufKey] = data;
           candidatosUfRef.current = data;
+          setCandidatesVersion((version) => version + 1);
         }
       } catch (err) {
         console.error('Erro ao carregar candidatos do R2:', err);
@@ -140,9 +143,9 @@ export default function CandidateAutocomplete({
       const filtrarCandidatos = (lista: any[]) => lista.filter((c: any) => {
         if (c.id === excludeId) return false;
 
-        const cargoCandidato = (c.cargo || '').toUpperCase().trim();
+        const cargoCandidato = normalizeText(c.cargo || '');
         const cargoValido = cargosPermitidos.some(
-          (cargo) => cargo.toUpperCase().trim() === cargoCandidato
+          (cargo) => normalizeText(cargo) === cargoCandidato
         );
         if (!cargoValido) return false;
 
@@ -150,8 +153,8 @@ export default function CandidateAutocomplete({
           return false;
         }
 
-        const matchCompleto = normalizeText(c.nome_completo).includes(termoBusca);
-        const matchUrna = normalizeText(c.nome_urna || '').includes(termoBusca);
+        const matchCompleto = normalizeText(c.nome_completo || c.nome || '').includes(termoBusca);
+        const matchUrna = normalizeText(c.nome_urna || c.nome_candidato || '').includes(termoBusca);
 
         return matchCompleto || matchUrna;
       });
@@ -185,7 +188,7 @@ export default function CandidateAutocomplete({
     }, 200);
 
     return () => window.clearTimeout(timeout);
-  }, [query, municipio, excludeId, selected, disabled, getCargosPermitidos]);
+  }, [query, municipio, excludeId, selected, disabled, getCargosPermitidos, candidatesVersion]);
 
   function filtratesMap(lista: any[]): Candidato[] {
     const mapUnicos = new Map();

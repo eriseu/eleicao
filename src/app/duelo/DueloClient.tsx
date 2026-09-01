@@ -10,6 +10,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, buildStateOptions, normalizeText, STATE_CAPITAIS } from '@/lib/municipioOptions';
+import { buildShortLinkUrl } from '@/lib/shortLink';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -482,9 +483,9 @@ export default function DueloClient() {
       params.set('municipio', selectedMunicipio);
     }
 
-    const shareUrl = `${window.location.origin}/duelo?${params.toString()}`;
+    const shareUrl = buildShortLinkUrl(`${window.location.origin}/duelo?${params.toString()}`);
     navigator.clipboard.writeText(shareUrl);
-    alert('Link copiado para compartilhar seu duelo!');
+    alert('Link curto copiado para compartilhar seu duelo!');
   };
 
   if (!isMounted) {

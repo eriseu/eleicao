@@ -11,6 +11,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, buildStateOptions, getStateNameFromUf, STATE_CAPITAIS } from '@/lib/municipioOptions';
+import { buildShortLinkUrl } from '@/lib/shortLink';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -309,10 +310,12 @@ function RankingContent() {
     const shareUrl = new URL(window.location.href);
     shareUrl.searchParams.delete('highlight');
 
+    const shortUrl = buildShortLinkUrl(shareUrl.toString());
+
     const shareData = {
       title: 'Ranking Duelo Político',
       text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
-      url: shareUrl.toString(),
+      url: shortUrl,
     };
 
     try {

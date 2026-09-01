@@ -306,35 +306,45 @@ function RankingContent() {
   }, [syncRankingUrl]);
 
   const handleShare = async () => {
-    const region = selectedMunicipio || getStateNameFromUf(selectedUf);
-    const shareUrl = new URL(window.location.href);
-    shareUrl.searchParams.delete('highlight');
-
-    const shortUrl = buildShortLinkUrl(shareUrl.toString());
-
-    const shareData = {
-      title: 'Ranking Duelo Político',
-      text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
-      url: shortUrl,
-    };
-
     try {
+      const region = selectedMunicipio || getStateNameFromUf(selectedUf);
+      const shareUrl = new URL(window.location.href);
+      shareUrl.searchParams.delete('highlight');
+
+      const targetUrl = shareUrl.pathname + shareUrl.search + shareUrl.hash;
+      const shortUrl = buildShortLinkUrl(targetUrl);
+
+      console.log('[Ranking Share] Target:', targetUrl);
+      console.log('[Ranking Share] Short URL:', shortUrl);
+
+      const shareData = {
+        title: 'Ranking Duelo Político',
+        text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
+        url: shortUrl,
+      };
+
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
         await navigator.clipboard.writeText(shareData.url);
-        setShareFeedback('Link copiado para a área de transferência!');
+        setShareFeedback('✅ Link copiado para a área de transferência!');
         setTimeout(() => setShareFeedback(''), 3000);
       }
     } catch (error) {
-      console.error('Erro ao compartilhar:', error);
+      console.error('[Ranking Share Error]:', error);
       try {
-        await navigator.clipboard.writeText(shareData.url);
-        setShareFeedback('Link copiado para a área de transferência!');
+        const region = selectedMunicipio || getStateNameFromUf(selectedUf);
+        const shareUrl = new URL(window.location.href);
+        shareUrl.searchParams.delete('highlight');
+        const targetUrl = shareUrl.pathname + shareUrl.search + shareUrl.hash;
+        const shortUrl = buildShortLinkUrl(targetUrl);
+        
+        await navigator.clipboard.writeText(shortUrl);
+        setShareFeedback('✅ Link copiado para a área de transferência!');
         setTimeout(() => setShareFeedback(''), 3000);
       } catch (copyError) {
-        console.error('Erro ao copiar o link:', copyError);
-        setShareFeedback('Não foi possível compartilhar ou copiar o link.');
+        console.error('[Ranking Copy Error]:', copyError);
+        setShareFeedback('❌ Erro ao copiar o link. Tente novamente.');
         setTimeout(() => setShareFeedback(''), 3000);
       }
     }

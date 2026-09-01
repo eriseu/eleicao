@@ -471,21 +471,41 @@ export default function DueloClient() {
     }
   };
 
-  const handleShare = () => {
-    if (!c1 || !c2) return;
-    const params = new URLSearchParams({ 
-      uf: selectedUf, 
-      c1: c1.id, 
-      c2: c2.id 
-    });
-
-    if (selectedMunicipio) {
-      params.set('municipio', selectedMunicipio);
+  const handleShare = async () => {
+    if (!c1 || !c2) {
+      console.warn('handleShare: candidatos não selecionados');
+      return;
     }
 
-    const shareUrl = buildShortLinkUrl(`${window.location.origin}/duelo?${params.toString()}`);
-    navigator.clipboard.writeText(shareUrl);
-    alert('Link curto copiado para compartilhar seu duelo!');
+    try {
+      const params = new URLSearchParams({ 
+        uf: selectedUf, 
+        c1: c1.id, 
+        c2: c2.id 
+      });
+
+      if (selectedMunicipio) {
+        params.set('municipio', selectedMunicipio);
+      }
+
+      const targetUrl = `/duelo?${params.toString()}`;
+      const shareUrl = buildShortLinkUrl(targetUrl);
+      
+      console.log('[Share] Target:', targetUrl);
+      console.log('[Share] Short URL:', shareUrl);
+      
+      if (!shareUrl) {
+        throw new Error('Falha ao gerar URL curta');
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      setFeedback('✅ Link curto copiado para compartilhar!');
+      setTimeout(() => setFeedback(''), 4000);
+    } catch (err) {
+      console.error('[Share Error]:', err);
+      setFeedback('❌ Erro ao compartilhar. Tente novamente.');
+      setTimeout(() => setFeedback(''), 4000);
+    }
   };
 
   if (!isMounted) {

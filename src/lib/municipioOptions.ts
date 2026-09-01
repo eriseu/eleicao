@@ -1,4 +1,33 @@
-import { AVAILABLE_UFS } from '../constants/elections.ts';
+const AVAILABLE_UFS = [
+  'BR',
+  'AC',
+  'AL',
+  'AM',
+  'AP',
+  'BA',
+  'CE',
+  'DF',
+  'ES',
+  'GO',
+  'MA',
+  'MG',
+  'MS',
+  'MT',
+  'PA',
+  'PB',
+  'PE',
+  'PI',
+  'PR',
+  'RJ',
+  'RN',
+  'RO',
+  'RR',
+  'RS',
+  'SC',
+  'SE',
+  'SP',
+  'TO',
+] as const;
 
 const STATE_NAMES: Record<string, string> = {
   AC: 'Acre',
@@ -65,6 +94,15 @@ export type SelectOption = {
   value: string;
   label: string;
 };
+
+export function normalizeText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
 
 export function getStateNameFromUf(uf: string): string {
   return STATE_NAMES[uf?.toUpperCase()] || uf || 'Brasil';

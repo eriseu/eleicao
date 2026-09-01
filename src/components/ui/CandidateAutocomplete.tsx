@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Candidato } from '@/types';
 import { fetchJsonSafely } from '@/lib/robustJson';
+import { normalizeText } from '@/lib/municipioOptions';
 
 interface CandidateAutocompleteProps {
   label: string;
@@ -120,12 +121,7 @@ export default function CandidateAutocomplete({
         return;
       }
 
-      const normalizar = (str: string) => {
-        if (!str) return '';
-        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      };
-
-      const termoBusca = normalizar(sanitizedTerm);
+      const termoBusca = normalizeText(sanitizedTerm);
       const cargosPermitidos = getCargosPermitidos();
 
       // Filtra direto na lista em memória vinda do R2 usando a busca tolerante a acentos
@@ -140,13 +136,13 @@ export default function CandidateAutocomplete({
         if (!cargoValido) return false;
 
         // 2. Filtro opcional por município se informado
-        if (municipio && c.municipio && normalizar(c.municipio) !== normalizar(municipio)) {
+        if (municipio && c.municipio && normalizeText(c.municipio) !== normalizeText(municipio)) {
           return false;
         }
 
         // 3. Compara ignorando acentos e maiúsculas/minúsculas tanto no nome completo quanto na urna
-        const matchCompleto = normalizar(c.nome_completo).includes(termoBusca);
-        const matchUrna = normalizar(c.nome_urna).includes(termoBusca);
+        const matchCompleto = normalizeText(c.nome_completo).includes(termoBusca);
+        const matchUrna = normalizeText(c.nome_urna).includes(termoBusca);
 
         return matchCompleto || matchUrna;
       });

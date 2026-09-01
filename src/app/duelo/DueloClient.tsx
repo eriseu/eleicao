@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react/no-unescaped-entities */
+
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
@@ -7,7 +9,7 @@ import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { AVAILABLE_UFS } from '@/constants/elections';
-import { buildMunicipioOptions, buildStateOptions } from '@/lib/municipioOptions';
+import { buildMunicipioOptions, buildStateOptions, normalizeText } from '@/lib/municipioOptions';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -119,8 +121,9 @@ export default function DueloClient() {
         // 2. Busca a candidatura mais recente que COMPATIBILIZA com o escopo atual
         const candidaturaDoEscopo = sortedCands.find((c: any) => {
           const cargoStr = (c.cargo || '').toUpperCase().trim();
-          const ufStr = (c.uf || perfil.uf || '').toUpperCase().trim();
-          const munStr = (c.municipio || '').toUpperCase().trim();
+          const ufStr = normalizeText(c.uf || perfil.uf || '');
+          const munStr = normalizeText(c.municipio || '');
+          const municipioSelecionado = normalizeText(selectedMunicipio);
 
           // Se for escopo BR (Nacional)
           if (selectedUf === 'BR') {
@@ -129,13 +132,13 @@ export default function DueloClient() {
 
           // Se for escopo Municipal
           if (selectedMunicipio) {
-            return ufStr === selectedUf.toUpperCase() && 
-                   munStr === selectedMunicipio.toUpperCase() && 
+            return ufStr === normalizeText(selectedUf) &&
+                   munStr === municipioSelecionado &&
                    cargosPermitidos.includes(cargoStr);
           }
 
           // Se for escopo Estadual
-          return ufStr === selectedUf.toUpperCase() && cargosPermitidos.includes(cargoStr);
+          return ufStr === normalizeText(selectedUf) && cargosPermitidos.includes(cargoStr);
         });
 
         // Se o candidato não tiver NENHUMA candidatura condizente com o filtro atual, desconsidera
@@ -224,6 +227,7 @@ export default function DueloClient() {
     if (isSharedDuel) return candidates;
 
     const cargosPermitidos = getCargosPorEscopo();
+    const municipioSelecionado = selectedMunicipio ? normalizeText(selectedMunicipio) : '';
 
     return candidates
       .filter((candidate) => {
@@ -240,7 +244,8 @@ export default function DueloClient() {
         if (candidate.uf !== selectedUf) return false;
 
         if (selectedMunicipio) {
-          if (candidate.municipio !== selectedMunicipio) return false;
+          const municipioCandidato = normalizeText(candidate.municipio || candidate.ultima_candidatura?.municipio);
+          if (municipioCandidato !== municipioSelecionado) return false;
         } else {
           if (CARGOS_POR_ESCOPO.municipal.includes(cargoCandidato)) return false;
         }

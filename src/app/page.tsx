@@ -7,7 +7,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import type { Candidato } from '@/types';
 import { fetchJsonSafely } from '@/lib/robustJson';
-import { buildMunicipioOptions, buildStateOptions } from '@/lib/municipioOptions';
+import { buildMunicipioOptions, buildStateOptions, STATE_CAPITAIS } from '@/lib/municipioOptions';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -221,12 +221,37 @@ export default function Home() {
               <select
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                 value={selectedMunicipio}
-                onChange={(event) => setSelectedMunicipio(event.target.value)}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+
+                  if (selectedUf === 'BR') {
+                    if (!nextValue) {
+                      setSelectedUf('BR');
+                      setSelectedMunicipio('');
+                    } else {
+                      setSelectedUf(nextValue);
+                      setSelectedMunicipio('');
+                    }
+                    return;
+                  }
+
+                  setSelectedMunicipio(nextValue);
+                }}
               >
                 <option value="">{selectedUf === 'BR' ? 'Todos os Estados' : 'Todos os Municípios'}</option>
-                {municipios.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
+                {municipios.map((option) => {
+                  const isCapital = selectedUf !== 'BR' && option.value.toUpperCase() === STATE_CAPITAIS[selectedUf.toUpperCase()]?.toUpperCase();
+
+                  return (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      style={isCapital ? { color: '#fbbf24' } : undefined}
+                    >
+                      {option.label}
+                    </option>
+                  );
+                })}
               </select>
             </label>
           </div>

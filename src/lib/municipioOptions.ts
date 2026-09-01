@@ -60,7 +60,7 @@ const STATE_NAMES: Record<string, string> = {
   BR: 'Brasil',
 };
 
-const STATE_CAPITAIS: Record<string, string> = {
+export const STATE_CAPITAIS: Record<string, string> = {
   AC: 'Rio Branco',
   AL: 'Maceió',
   AP: 'Macapá',
@@ -142,11 +142,16 @@ export function buildMunicipioOptions(rawMunicipios: Array<string | { municipio?
     .filter((municipio) => municipio.toUpperCase() !== capital?.toUpperCase())
     .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-  const options: SelectOption[] = capital
-    ? [{ value: capital, label: `${capital} (sede)` }, ...sorted.map((municipio) => ({ value: municipio, label: municipio }))]
-    : sorted.map((municipio) => ({ value: municipio, label: municipio }));
+  const capitalOption = capital
+    ? [{ value: capital, label: capital.toUpperCase() }]
+    : [];
 
-  return options.filter(
+  const municipalityOptions = sorted.map((municipio) => ({
+    value: municipio,
+    label: municipio.toUpperCase(),
+  }));
+
+  return [...capitalOption, ...municipalityOptions].filter(
     (option, index, arr) => arr.findIndex((entry) => entry.value.toUpperCase() === option.value.toUpperCase()) === index,
   );
 }

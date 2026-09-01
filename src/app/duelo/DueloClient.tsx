@@ -9,7 +9,7 @@ import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
 import { AVAILABLE_UFS } from '@/constants/elections';
-import { buildMunicipioOptions, buildStateOptions, normalizeText } from '@/lib/municipioOptions';
+import { buildMunicipioOptions, buildStateOptions, normalizeText, STATE_CAPITAIS } from '@/lib/municipioOptions';
 
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
@@ -67,6 +67,33 @@ export default function DueloClient() {
     if (sharedUf) setSelectedUf(sharedUf);
     if (sharedMunicipio) setSelectedMunicipio(sharedMunicipio);
   }, [sharedUf, sharedMunicipio]);
+
+  useEffect(() => {
+    if (isSharedDuel) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (!selectedUf || selectedUf === 'BR') {
+      params.delete('uf');
+      if (selectedMunicipio) {
+        params.delete('municipio');
+      }
+    } else {
+      params.set('uf', selectedUf);
+      if (selectedMunicipio) {
+        params.set('municipio', selectedMunicipio);
+      } else {
+        params.delete('municipio');
+      }
+    }
+
+    const nextUrl = `/duelo?${params.toString()}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (currentUrl !== nextUrl) {
+      router.replace(nextUrl, { scroll: false });
+    }
+  }, [isSharedDuel, router, searchParams, selectedMunicipio, selectedUf]);
 
   useEffect(() => {
     if (selectedUf === 'BR') {
@@ -504,13 +531,39 @@ export default function DueloClient() {
                 <select
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                   value={selectedMunicipio}
-                  onChange={(event) => setSelectedMunicipio(event.target.value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+
+                    if (selectedUf === 'BR') {
+                      if (!nextValue) {
+                        setSelectedUf('BR');
+                        setSelectedMunicipio('');
+                        return;
+                      }
+
+                      setSelectedUf(nextValue);
+                      setSelectedMunicipio('');
+                      return;
+                    }
+
+                    setSelectedMunicipio(nextValue);
+                  }}
                   disabled={isSharedDuel}
                 >
                   <option value="">{selectedUf === 'BR' ? 'Todos os Estados' : 'Todos'}</option>
-                  {municipios.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
+                  {municipios.map((option) => {
+                    const isCapital = selectedUf !== 'BR' && option.value.toUpperCase() === STATE_CAPITAIS[selectedUf.toUpperCase()]?.toUpperCase();
+
+                    return (
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        style={isCapital ? { color: '#fbbf24' } : undefined}
+                      >
+                        {option.label}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
 

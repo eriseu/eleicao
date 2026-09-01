@@ -21,7 +21,7 @@ test('coloca a sede do estado no topo do combo e remove duplicatas', () => {
     'Rio Branco',
   ], 'AC');
 
-  assert.deepEqual(options.map((option) => option.label), ['Rio Branco (sede)', 'Cruzeiro do Sul']);
+  assert.deepEqual(options.map((option) => option.label), ['RIO BRANCO', 'CRUZEIRO DO SUL']);
 });
 
 test('quando o estado é Brasil, o combo mostra os estados', () => {
@@ -35,4 +35,17 @@ test('a comparação de município ignora acentos, espaços e caixa', () => {
   assert.equal(normalizeText('São Luís'), 'SAO LUIS');
   assert.equal(normalizeText(' sao   luis  '), 'SAO LUIS');
   assert.equal(normalizeText('São Luís'), normalizeText('sao luis'));
+});
+
+test('a sede fica no topo sem texto de destaque e as cidades ficam em maiusculas', () => {
+  const options = buildMunicipioOptions([
+    'MA MARANHAO',
+    'São Luís',
+    'Imperatriz',
+    'Caxias',
+    'São Luís',
+  ], 'MA');
+
+  assert.deepEqual(options.map((option) => option.label), ['SÃO LUÍS', 'CAXIAS', 'IMPERATRIZ', 'MARANHAO']);
+  assert.ok(options.every((option) => !option.label.includes('sede')));
 });

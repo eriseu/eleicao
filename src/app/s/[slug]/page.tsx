@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { decodeShortLinkTarget } from '@/lib/shortLink';
 import { buildDuelOgImageUrl } from '@/lib/duelOgImage';
 import { supabase } from '@/lib/supabaseClient';
+import { getSiteUrl } from '@/lib/seo';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -72,13 +73,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
           const description = `Compare ${first.nome_completo} e ${second.nome_completo} no Duelo Político e escolha quem representa melhor suas preferências.`;
           const ogImage = buildDuelOgImageUrl(resolved.c1, resolved.c2, resolved.uf);
 
+          const absoluteUrl = new URL(resolved.url, getSiteUrl()).toString();
+
           return {
             title,
             description,
             openGraph: {
               title,
               description,
-              url: resolved.url,
+              url: absoluteUrl,
               images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
             },
             twitter: {
@@ -99,13 +102,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const description = 'Compare candidatos no Duelo Político';
     const ogImage = buildDuelOgImageUrl(resolved.c1, resolved.c2, resolved.uf);
 
+    const absoluteUrl = new URL(resolved.url, getSiteUrl()).toString();
+
     return {
       title,
       description,
       openGraph: {
         title,
         description,
-        url: resolved.url,
+        url: absoluteUrl,
         images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
       },
       twitter: {
@@ -149,8 +154,9 @@ export default async function ShortLinkPage({ params }: PageProps) {
     notFound();
   }
 
-  if (process.env.NEXT_PUBLIC_SITE_URL && resolved.url.startsWith('/')) {
-    redirect(`${process.env.NEXT_PUBLIC_SITE_URL}${resolved.url}`);
+  const siteUrl = getSiteUrl();
+  if (resolved.url.startsWith('/')) {
+    redirect(new URL(resolved.url, siteUrl).toString());
   }
 
   redirect(resolved.url);

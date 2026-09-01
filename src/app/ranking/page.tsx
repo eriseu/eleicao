@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import RankingClient from './RankingClient';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
+import { getSiteUrl } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +50,8 @@ export async function generateMetadata({ searchParams }: RankingPageProps): Prom
     ? requestedUf
     : 'BR';
   const canonicalParams = new URLSearchParams({ uf, highlight: highlightedId });
-  const canonical = `/ranking?${canonicalParams.toString()}`;
+  const canonicalPath = `/ranking?${canonicalParams.toString()}`;
+  const canonical = new URL(canonicalPath, getSiteUrl()).toString();
   const scope = uf === 'BR' ? 'Brasil' : uf;
   const title = `${candidate.nome_completo} no ranking de ${scope}`;
   const description = `Veja a posição de ${candidate.nome_completo} no ranking político de ${scope}, com pontuação Elo atualizada.`;

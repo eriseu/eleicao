@@ -3,9 +3,10 @@ import Script from 'next/script';
 import './globals.css';
 
 import FooterMenu from '@/components/layout/BottomNav';
+import { getSiteUrl } from '@/lib/seo';
 
 export async function generateMetadata(): Promise<Metadata> {
-  const siteUrl = 'https://politica.centraleti.com.br';
+  const siteUrl = getSiteUrl();
   const siteTitle = 'Duelo Político - Quem te representa melhor?';
   const siteDescription = 'Compare candidatos e veja quem está mais alinhado com suas escolhas. Participe do ranking e compartilhe seus duelos.';
   const ogImageUrl = `${siteUrl}/politica.centraleti.com.br.png`;

@@ -4,6 +4,7 @@ import DueloClient from './DueloClient';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
 import { buildDuelOgImageUrl } from '@/lib/duelOgImage';
+import { getSiteUrl } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +55,8 @@ export async function generateMetadata({ searchParams }: DueloPageProps): Promis
   if (requestedUf && AVAILABLE_UFS.some((uf) => uf === requestedUf)) {
     params.set('uf', requestedUf);
   }
-  const canonical = `/duelo?${params.toString()}`;
+  const canonicalPath = `/duelo?${params.toString()}`;
+  const canonical = new URL(canonicalPath, getSiteUrl()).toString();
   const title = `${firstName} x ${secondName}`;
   const description = `Compare ${firstName} e ${secondName} no Duelo Político e escolha quem representa melhor suas preferências.`;
   const ogImage = buildDuelOgImageUrl(firstId, secondId, requestedUf);

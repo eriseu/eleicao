@@ -472,12 +472,17 @@ export default function DueloClient() {
   };
 
   const handleShare = async () => {
+    console.log('[Share] Iniciando compartilhamento...');
+    
     if (!c1 || !c2) {
-      console.warn('handleShare: candidatos não selecionados');
+      console.warn('[Share] Candidatos não selecionados:', { c1: c1?.nome_urna, c2: c2?.nome_urna });
+      setFeedback('❌ Selecione 2 candidatos para compartilhar.');
+      setTimeout(() => setFeedback(''), 4000);
       return;
     }
 
     try {
+      console.log('[Share] Construindo URL...');
       const params = new URLSearchParams({ 
         uf: selectedUf, 
         c1: c1.id, 
@@ -489,21 +494,28 @@ export default function DueloClient() {
       }
 
       const targetUrl = `/duelo?${params.toString()}`;
+      console.log('[Share] Target URL:', targetUrl);
+      
+      console.log('[Share] Gerando URL curta...');
       const shareUrl = buildShortLinkUrl(targetUrl);
+      console.log('[Share] Short URL gerada:', shareUrl);
       
-      console.log('[Share] Target:', targetUrl);
-      console.log('[Share] Short URL:', shareUrl);
-      
-      if (!shareUrl) {
-        throw new Error('Falha ao gerar URL curta');
+      if (!shareUrl || shareUrl.length < 10) {
+        throw new Error(`URL curta inválida: ${shareUrl}`);
       }
 
+      console.log('[Share] Copiando para clipboard...');
       await navigator.clipboard.writeText(shareUrl);
+      console.log('[Share] ✅ Sucesso!');
+      
       setFeedback('✅ Link curto copiado para compartilhar!');
       setTimeout(() => setFeedback(''), 4000);
     } catch (err) {
-      console.error('[Share Error]:', err);
-      setFeedback('❌ Erro ao compartilhar. Tente novamente.');
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[Share Error] Falha ao compartilhar:', errorMsg);
+      console.error('[Share Error] Stack:', err instanceof Error ? err.stack : '(sem stack)');
+      
+      setFeedback('❌ Erro ao copiar link, tente novamente.');
       setTimeout(() => setFeedback(''), 4000);
     }
   };

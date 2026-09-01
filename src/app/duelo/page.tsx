@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import DueloClient from './DueloClient';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
+import { buildDuelOgImageUrl } from '@/lib/duelOgImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +57,24 @@ export async function generateMetadata({ searchParams }: DueloPageProps): Promis
   const canonical = `/duelo?${params.toString()}`;
   const title = `${firstName} x ${secondName}`;
   const description = `Compare ${firstName} e ${secondName} no Duelo Político e escolha quem representa melhor suas preferências.`;
+  const ogImage = buildDuelOgImageUrl(firstId, secondId, requestedUf);
 
   return {
     title,
     description,
     alternates: { canonical },
-    openGraph: { title, description, url: canonical },
-    twitter: { card: 'summary', title, description },
+    openGraph: {
+      title,
+      description,
+      url: canonical,
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [ogImage],
+    },
   };
 }
 

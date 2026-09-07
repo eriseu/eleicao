@@ -23,12 +23,17 @@ const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
   estadual: [
     'DEPUTADO ESTADUAL',
+    'DEPUTADA ESTADUAL',
     'DEPUTADO FEDERAL',
+    'DEPUTADA FEDERAL',
     'GOVERNADOR',
+    'GOVERNADORA',
     'VICE-GOVERNADOR',
+    'VICE-GOVERNADORA',
     'SENADOR',
+    'SENADORA',
   ],
-  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
+  municipal: ['PREFEITO', 'PREFEITA', 'VICE-PREFEITO', 'VICE-PREFEITA', 'VEREADOR', 'VEREADORA'],
 };
 
 const ITEMS_PER_PAGE = 10;
@@ -59,7 +64,6 @@ function RankingContent() {
   const [shareFeedback, setShareFeedback] = useState('');
   const [hasMore, setHasMore] = useState(true);
 
-  // Sincroniza estado com parâmetros da URL sempre que mudarem
   useEffect(() => {
     const ufParam = searchParams.get('uf')?.toUpperCase();
     if (ufParam && (AVAILABLE_UFS as readonly string[]).includes(ufParam)) {
@@ -99,7 +103,6 @@ function RankingContent() {
     void loadMunicipios();
   }, [selectedUf]);
 
-  // Define os cargos permitidos de acordo com a seleção atual
   const getCargosPorEscopo = useCallback(() => {
     if (selectedUf === 'BR') {
       return CARGOS_POR_ESCOPO.nacional;
@@ -112,7 +115,6 @@ function RankingContent() {
 
   const processCandidaturas = (perfis: any[], candidaturas: any[], cargosPermitidos: string[]): Candidato[] => {
     const perfisIncluidos = new Set<string>();
-    const cargosUpper = cargosPermitidos.map(c => c.toUpperCase().trim());
 
     return perfis.flatMap((perfil) => {
       if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) {
@@ -123,19 +125,17 @@ function RankingContent() {
       const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
       if (candsDoPerfil.length === 0) return [];
 
+      // ORDENAÇÃO RIGOROSA: Garante que a primeira seja SEMPRE a eleição mais recente (ex: 2026 > 2022 > 2018)
       const sortedCands = [...candsDoPerfil].sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
 
-      // 1. Tenta achar a candidatura correspondente aos filtros
+      // 1. Procura a candidatura mais recente que se encaixe nos filtros atuais
       const candidaturaCorrespondente = sortedCands.find((c: any) => 
-        cargosUpper.includes((c.cargo || '').toUpperCase().trim()) &&
         (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
         (!selectedMunicipio || (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim())
       );
 
-      // 2. Se não achar, usa a mais recente
+      // 2. Se não achar filtro específico, pega estritamente a mais recente do histórico geral
       const candidaturaPrincipal = candidaturaCorrespondente || sortedCands[0];
-
-      // 3. Usa a foto da própria candidatura selecionada
       const fotoFinal = candidaturaPrincipal.foto || candidaturaPrincipal.sq_candidato || '';
 
       return [{
@@ -147,10 +147,10 @@ function RankingContent() {
         elo_score: perfil.elo_score ?? 1200,
         matches_count: perfil.matches_count ?? 0,
         nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
-        nr_candidato: candidaturaPrincipal.nr_candidato, // << INCLUÍDO O NÚMERO DO CANDIDATO
+        nr_candidato: candidaturaPrincipal.nr_candidato,
         partido: candidaturaPrincipal.partido || 'S/P',
         cargo: candidaturaPrincipal.cargo,
-        ano_eleicao: candidaturaPrincipal.ano_eleicao,
+        ano_eleicao: candidaturaPrincipal.ano_eleicao, // Garantido o ano mais recente
         uf: candidaturaPrincipal.uf,
         municipio: candidaturaPrincipal.municipio,
         foto: fotoFinal,
@@ -217,11 +217,11 @@ function RankingContent() {
       const perfilIds = data.map((p: any) => p.id);
       const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
 
+      // Ordena candidaturas trazidas para pegar a mais recente
       const candidaturasProcessadas = perfilIds.map((id: any) => {
         const candsDoPerfil = (candidaturas as any[]).filter((c: any) =>
           c.perfil_id === id &&
           (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
-          cargos.some(cargoPermitido => cargoPermitido.toUpperCase() === c.cargo?.toUpperCase()) &&
           (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
           (!selectedMunicipio || c.municipio?.trim().toUpperCase() === selectedMunicipio.trim().toUpperCase())
         );
@@ -256,7 +256,6 @@ function RankingContent() {
     void loadRanking();
   }, [isMounted, activeHighlightId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
-  // Rola suavemente até o elemento destacado
   useEffect(() => {
     if (!activeHighlightId || loading) return;
     const timer = setTimeout(() => {
@@ -486,9 +485,10 @@ function RankingContent() {
                     </div>
                   </div>
 
-                  {/* Linha com Cargo, Partido e Número do Candidato */}
+                  {/* Exibição: Ano Eleição · Cargo · Partido e Badge do Número */}
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-                    <span>{cand.cargo} · {cand.partido}</span>
+                    <span className="font-semibold text-emerald-400">{cand.ano_eleicao}</span>
+                    <span>· {cand.cargo} · {cand.partido}</span>
                     {eValido((cand as any).nr_candidato) && (
                       <span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
                         Nº {(cand as any).nr_candidato}

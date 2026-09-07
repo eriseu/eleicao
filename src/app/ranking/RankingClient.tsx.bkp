@@ -12,13 +12,6 @@ import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, buildStateOptions, getStateNameFromUf, STATE_CAPITAIS } from '@/lib/municipioOptions';
 
-// Helper para validar campos ignorando nulos e marcadores
-function eValido(valor: any): boolean {
-  if (valor === null || valor === undefined) return false;
-  const str = String(valor).trim().toUpperCase();
-  return str !== '' && str !== '#NULO' && str !== '#NULO#' && str !== 'NULO' && str !== '#NE#';
-}
-
 const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
   nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
   estadual: [
@@ -53,8 +46,11 @@ function RankingContent() {
   const [selectedUf, setSelectedUf] = useState(initialUf);
   const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
   const [activeHighlightId, setActiveHighlightId] = useState(searchParams.get('highlight') || '');
+  const initialHighlightHandledRef = useRef(false);
   const loadRequestIdRef = useRef(0);
 
+  const highlightedId = searchParams.get('highlight') || '';
+  
   const [loading, setLoading] = useState(false);
   const [shareFeedback, setShareFeedback] = useState('');
   const [hasMore, setHasMore] = useState(true);
@@ -135,7 +131,7 @@ function RankingContent() {
       // 2. Se não achar, usa a mais recente
       const candidaturaPrincipal = candidaturaCorrespondente || sortedCands[0];
 
-      // 3. Usa a foto da própria candidatura selecionada
+      // 3. USA A FOTO DA PRÓPRIA CANDIDATURA SELECIONADA (Evita misturar foto de 2022 com ano de 2018)
       const fotoFinal = candidaturaPrincipal.foto || candidaturaPrincipal.sq_candidato || '';
 
       return [{
@@ -147,7 +143,6 @@ function RankingContent() {
         elo_score: perfil.elo_score ?? 1200,
         matches_count: perfil.matches_count ?? 0,
         nome_urna: candidaturaPrincipal.nome_urna || perfil.nome_completo,
-        nr_candidato: candidaturaPrincipal.nr_candidato, // << INCLUÍDO O NÚMERO DO CANDIDATO
         partido: candidaturaPrincipal.partido || 'S/P',
         cargo: candidaturaPrincipal.cargo,
         ano_eleicao: candidaturaPrincipal.ano_eleicao,
@@ -256,7 +251,7 @@ function RankingContent() {
     void loadRanking();
   }, [isMounted, activeHighlightId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
-  // Rola suavemente até o elemento destacado
+  // Rola suavemente até o elemento destacado apenas quando o acesso veio com highlight
   useEffect(() => {
     if (!activeHighlightId || loading) return;
     const timer = setTimeout(() => {
@@ -318,6 +313,9 @@ function RankingContent() {
       const targetUrl = shareUrl.pathname + shareUrl.search + shareUrl.hash;
       const fullUrl = new URL(targetUrl, process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).toString();
 
+      console.log('[Ranking Share] Target:', targetUrl);
+      console.log('[Ranking Share] Full URL:', fullUrl);
+
       const shareData = {
         title: 'Ranking Duelo Político',
         text: `Confira o ranking dos políticos de ${region} no Duelo Político!`,
@@ -334,6 +332,7 @@ function RankingContent() {
     } catch (error) {
       console.error('[Ranking Share Error]:', error);
       try {
+        const region = selectedMunicipio || getStateNameFromUf(selectedUf);
         const shareUrl = new URL(window.location.href);
         shareUrl.searchParams.delete('highlight');
         const targetUrl = shareUrl.pathname + shareUrl.search + shareUrl.hash;
@@ -485,18 +484,8 @@ function RankingContent() {
                       <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * ITEMS_PER_PAGE + index + 1}º</span>
                     </div>
                   </div>
-
-                  {/* Linha com Cargo, Partido e Número do Candidato */}
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-                    <span>{cand.cargo} · {cand.partido}</span>
-                    {eValido((cand as any).nr_candidato) && (
-                      <span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
-                        Nº {(cand as any).nr_candidato}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{cand.municipio} · {cand.uf}</p>
+                  <p className="mt-1 text-sm text-slate-400">{cand.cargo} · {cand.partido}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{cand.municipio} · {cand.uf}</p>
                 </div>
                 <div className="rounded-3xl bg-slate-950 px-4 py-2 text-right">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Elo</p>

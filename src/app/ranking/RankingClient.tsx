@@ -487,7 +487,7 @@ function RankingContent() {
 
                   {/* Exibição: Ano Eleição · Cargo · Partido e Badge do Número */}
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-                    <span className="font-semibold text-emerald-400">{cand.ano_eleicao}</span>
+                    <span className="font-semibold text-emerald-400">{cand.ultima_candidatura?.ano_eleicao}</span>
                     <span>· {cand.cargo} · {cand.partido}</span>
                     {eValido((cand as any).nr_candidato) && (
                       <span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">

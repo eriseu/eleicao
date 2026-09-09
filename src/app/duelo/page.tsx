@@ -15,22 +15,30 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
 }) {
-  const resolvedParams = await searchParams;
-  const firstId = resolvedParams?.c1 || '';
-  const secondId = resolvedParams?.c2 || '';
-  const requestedUf = resolvedParams?.uf || '';
+  let firstId = '';
+  let secondId = '';
+  let requestedUf = '';
+
+  try {
+    const resolvedParams = await searchParams;
+    firstId = resolvedParams?.c1 || '';
+    secondId = resolvedParams?.c2 || '';
+    requestedUf = resolvedParams?.uf || '';
+  } catch (e) {
+    console.error('Erro ao resolver searchParams:', e);
+  }
 
   let firstName = '';
   let secondName = '';
 
   if (firstId && secondId) {
     try {
-      const { data: candidates } = await supabase
+      const { data: candidates, error } = await supabase
         .from('perfis_candidatos')
         .select('id, nome_completo, nome_urna')
         .in('id', [firstId, secondId]);
 
-      if (candidates && candidates.length > 0) {
+      if (!error && candidates && candidates.length > 0) {
         const castedCandidates = candidates as CandidatePerfil[];
         const byId = new Map<string, CandidatePerfil>(
           castedCandidates.map((c) => [c.id, c])
@@ -42,7 +50,7 @@ export async function generateMetadata({
         secondName = c2?.nome_urna || c2?.nome_completo || '';
       }
     } catch (err) {
-      console.error('Erro na geração de metadados:', err);
+      console.error('Erro ao buscar candidatos para metadados:', err);
     }
   }
 
@@ -64,7 +72,17 @@ export async function generateMetadata({
       title,
       description,
       url: canonical,
-      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+      siteName: 'Duelo Político',
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: title,
+          type: 'image/png',
+        },
+      ],
+      type: 'website',
     },
     twitter: {
       card: 'summary_large_image',

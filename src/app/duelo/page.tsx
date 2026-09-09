@@ -1,5 +1,6 @@
+import { Suspense } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import DueloClient from './DueloClient'; // Ajuste a importação do seu componente cliente se necessário
+import DueloClient from './DueloClient'; // Ajuste o caminho da importação se necessário
 
 export async function generateMetadata({
   searchParams,
@@ -14,7 +15,6 @@ export async function generateMetadata({
   let firstName = '';
   let secondName = '';
 
-  // 1. Busca os nomes no Supabase para montar os títulos dinâmicos
   if (firstId && secondId) {
     try {
       const { data: candidates } = await supabase
@@ -35,7 +35,6 @@ export async function generateMetadata({
     }
   }
 
-  // 2. Fallback caso não haja IDs ou candidatos válidos
   if (!firstName || !secondName) {
     return {
       title: 'Compare candidatos',
@@ -44,7 +43,6 @@ export async function generateMetadata({
     };
   }
 
-  // 3. Monta as URLs e Metadados dinâmicos
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
   const ogImage = `${baseUrl}/api/og?c1=${firstId}&c2=${secondId}&uf=${requestedUf}`;
   const canonical = `${baseUrl}/duelo?c1=${firstId}&c2=${secondId}`;
@@ -71,5 +69,9 @@ export async function generateMetadata({
 }
 
 export default function Page() {
-  return <DueloClient />;
+  return (
+    <Suspense fallback={<div>Carregando...</div>}>
+      <DueloClient />
+    </Suspense>
+  );
 }

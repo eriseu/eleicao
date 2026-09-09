@@ -1,43 +1,42 @@
 import { ImageResponse } from 'next/og';
-import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-const DEFAULT_AVATAR = 'https://politica.centraleti.com.br/avatar.png';
+// 1. Garanta que a imagem de fallback seja PNG/JPG válido e acessível
+const DEFAULT_AVATAR = 'https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/www/public/avatars/01.png';
 
 function sanitizeImage(src: string | null | undefined) {
   if (!src) return DEFAULT_AVATAR;
   const trimmed = String(src).trim();
   if (!trimmed || trimmed.includes('avatar.png')) return DEFAULT_AVATAR;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  
-  // Caso seja apenas o ID da foto/sq_candidato ou caminho relativo
   return `https://f.centraleti.com.br/f/${trimmed.replace(/^\//, '')}`;
 }
 
-export default async function Image({searchParams,}: {
+export default async function Image({
+  searchParams,
+}: {
   searchParams?: Promise<{ c1?: string; c2?: string; uf?: string }>;
 }) {
   const resolvedSearch = searchParams ? await searchParams : undefined;
   const c1Id = resolvedSearch?.c1 || '';
   const c2Id = resolvedSearch?.c2 || '';
 
-  // Remova o notFound() e deixe carregar os dados se existirem
   let first: any = null;
   let second: any = null;
 
   if (c1Id && c2Id) {
     try {
-      const { data: candidates, error } = await supabase
+      const { data: candidates } = await supabase
         .from('perfis_candidatos')
         .select('id, nome_completo, nome_urna, foto, foto_path')
         .in('id', [c1Id, c2Id]);
 
-      if (!error && candidates) {
-        const byId = new Map(candidates.map((c) => [c.id, c]));
+      if (candidates && candidates.length > 0) {
+        const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
         first = byId.get(c1Id) || null;
         second = byId.get(c2Id) || null;
       }
@@ -86,7 +85,8 @@ export default async function Image({searchParams,}: {
           }}
         />
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '92%', zIndex: 1 }}>
+        {/* As tags img agora contêm width e height explícitos (222px) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '92%' }}>
           <div style={{ width: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
             <div
               style={{
@@ -97,11 +97,20 @@ export default async function Image({searchParams,}: {
                 border: '4px solid rgba(255,255,255,0.22)',
                 boxShadow: '0 18px 60px rgba(14,165,233,0.2)',
                 backgroundColor: '#0f172a',
+                display: 'flex',
               }}
             >
-              <img src={leftImage} alt={leftName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img
+                src={leftImage}
+                alt={leftName}
+                width={222}
+                height={222}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', maxWidth: 260, lineHeight: 1.2 }}>{leftName}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', maxWidth: 260, lineHeight: 1.2 }}>
+              {leftName}
+            </div>
           </div>
 
           <div
@@ -134,11 +143,20 @@ export default async function Image({searchParams,}: {
                 border: '4px solid rgba(255,255,255,0.22)',
                 boxShadow: '0 18px 60px rgba(168,85,247,0.2)',
                 backgroundColor: '#0f172a',
+                display: 'flex',
               }}
             >
-              <img src={rightImage} alt={rightName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img
+                src={rightImage}
+                alt={rightName}
+                width={222}
+                height={222}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', maxWidth: 260, lineHeight: 1.2 }}>{rightName}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', maxWidth: 260, lineHeight: 1.2 }}>
+              {rightName}
+            </div>
           </div>
         </div>
 
@@ -156,7 +174,6 @@ export default async function Image({searchParams,}: {
             textTransform: 'uppercase',
             fontSize: 22,
             color: 'rgba(255,255,255,0.9)',
-            zIndex: 1,
           }}
         >
           <span>Duelo Político</span>

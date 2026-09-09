@@ -4,6 +4,13 @@ import DueloClient from './DueloClient';
 
 export const dynamic = 'force-dynamic';
 
+// Interface para garantir que o TypeScript reconheça os campos do Supabase
+interface CandidatePerfil {
+  id: string;
+  nome_completo?: string | null;
+  nome_urna?: string | null;
+}
+
 export async function generateMetadata({
   searchParams,
 }: {
@@ -19,7 +26,6 @@ export async function generateMetadata({
 
   if (firstId && secondId) {
     try {
-      // Promise.race para cancelar a busca se demorar mais de 2.5s (evita erro 503)
       const fetchPromise = supabase
         .from('perfis_candidatos')
         .select('id, nome_completo, nome_urna')
@@ -29,10 +35,11 @@ export async function generateMetadata({
         setTimeout(() => reject(new Error('Timeout')), 2500)
       );
 
-      const { data: candidates }: any = await Promise.race([fetchPromise, timeoutPromise]);
+      const response: any = await Promise.race([fetchPromise, timeoutPromise]);
+      const candidates = response?.data as CandidatePerfil[] | null;
 
       if (candidates && candidates.length > 0) {
-        const byId = new Map(candidates.map((c: any) => [c.id, c]));
+        const byId = new Map<string, CandidatePerfil>(candidates.map((c) => [c.id, c]));
         const c1 = byId.get(firstId);
         const c2 = byId.get(secondId);
 

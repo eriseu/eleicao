@@ -1,34 +1,41 @@
-import React, { Suspense } from 'react';
-import type { Metadata } from 'next';
-import DueloClient from './DueloClient';
-import { AVAILABLE_UFS } from '@/constants/elections';
 import { supabase } from '@/lib/supabaseClient';
-import { buildDuelOgImageUrl } from '@/lib/duelOgImage';
-import { getSiteUrl } from '@/lib/seo';
+import DueloClient from './DueloClient'; // Ajuste a importação do seu componente cliente se necessário
 
-export const dynamic = 'force-dynamic';
-
-type DueloPageProps = {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
-
-function firstValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-// Asserte que a palavra 'async function' está abrindo a função corretamente
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
-}) { // <-- Certifique-se de que a chave de abertura está aqui
-  const { c1, c2, uf } = await searchParams;
+}) {
+  const resolvedParams = await searchParams;
+  const firstId = resolvedParams?.c1 || '';
+  const secondId = resolvedParams?.c2 || '';
+  const requestedUf = resolvedParams?.uf || '';
 
-  const firstId = c1 || '';
-  const secondId = c2 || '';
-  const requestedUf = uf || '';
+  let firstName = '';
+  let secondName = '';
 
-  // Exemplo de verificação que você tem no seu código:
+  // 1. Busca os nomes no Supabase para montar os títulos dinâmicos
+  if (firstId && secondId) {
+    try {
+      const { data: candidates } = await supabase
+        .from('perfis_candidatos')
+        .select('id, nome_completo, nome_urna')
+        .in('id', [firstId, secondId]);
+
+      if (candidates && candidates.length > 0) {
+        const byId = new Map(candidates.map((c) => [c.id, c]));
+        const c1 = byId.get(firstId);
+        const c2 = byId.get(secondId);
+
+        firstName = c1?.nome_urna || c1?.nome_completo || '';
+        secondName = c2?.nome_urna || c2?.nome_completo || '';
+      }
+    } catch (err) {
+      console.error('Erro ao buscar dados dos candidatos para metadados:', err);
+    }
+  }
+
+  // 2. Fallback caso não haja IDs ou candidatos válidos
   if (!firstName || !secondName) {
     return {
       title: 'Compare candidatos',
@@ -37,6 +44,7 @@ export async function generateMetadata({
     };
   }
 
+  // 3. Monta as URLs e Metadados dinâmicos
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
   const ogImage = `${baseUrl}/api/og?c1=${firstId}&c2=${secondId}&uf=${requestedUf}`;
   const canonical = `${baseUrl}/duelo?c1=${firstId}&c2=${secondId}`;
@@ -60,7 +68,7 @@ export async function generateMetadata({
       images: [ogImage],
     },
   };
-} // <-- Fechamento da função generateMetadata
+}
 
 export default function Page() {
   return <DueloClient />;

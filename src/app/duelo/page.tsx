@@ -16,24 +16,30 @@ function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export async function generateMetadata({ searchParams }: DueloPageProps): Promise<Metadata> {
-  const query = await searchParams;
-  const firstId = firstValue(query.c1);
-  const secondId = firstValue(query.c2);
-  const requestedUf = firstValue(query.uf)?.toUpperCase();
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
+}) {
+  const { c1, c2, uf } = await searchParams;
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
 
-  if (!firstId || !secondId || firstId === secondId) {
-    return {
-      title: 'Compare candidatos',
-      description: 'Escolha dois candidatos, compare seus perfis e registre sua preferência no duelo político.',
-      alternates: { canonical: '/duelo' },
-      openGraph: {
-        title: 'Compare candidatos no Duelo Político',
-        description: 'Coloque dois candidatos frente a frente e faça sua escolha.',
-        url: '/duelo',
-      },
-    };
-  }
+  const ogImageUrl = `${baseUrl}/api/og?c1=${c1 || ''}&c2=${c2 || ''}&uf=${uf || ''}`;
+
+  return {
+    title: 'Duelo Político',
+    openGraph: {
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: 'Duelo Político',
+        },
+      ],
+    },
+  };
+}
 
   const { data } = await supabase
     .from('perfis_candidatos')

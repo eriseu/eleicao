@@ -5,15 +5,59 @@ export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-// 1. Garanta que a imagem de fallback seja PNG/JPG válido e acessível
 const DEFAULT_AVATAR = 'https://raw.githubusercontent.com/shadcn-ui/ui/main/apps/www/public/avatars/01.png';
 
-function sanitizeImage(src: string | null | undefined) {
-  if (!src) return DEFAULT_AVATAR;
-  const trimmed = String(src).trim();
-  if (!trimmed || trimmed.includes('avatar.png')) return DEFAULT_AVATAR;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://f.centraleti.com.br/f/${trimmed.replace(/^\//, '')}`;
+// Busca a imagem do servidor e converte em Base64 para garantir a exibição sem problemas de CORS no Vercel OG
+async function fetchImageAsBase64(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { cache: 'force-cache' });
+    if (!res.ok) return DEFAULT_AVATAR;
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = res.headers.get('content-type') || 'image/jpeg';
+    return `data:${contentType};base64,${buffer.toString('base64')}`;
+  } catch (e) {
+    console.error('Erro ao converter imagem para base64:', e);
+    return DEFAULT_AVATAR;
+  }
+}
+
+// Busca as candidaturas do candidato diretamente na API do VPS
+async function fetchFotoFromVPS(perfilId: string): Promise<string> {
+  try {
+    const vpsApiUrl = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://politica.centraleti.com.br';
+    const res = await fetch(`${vpsApiUrl}/api/candidaturas?ids=${perfilId}`, {
+      cache: 'force-cache',
+    });
+
+    if (!res.ok) return DEFAULT_AVATAR;
+
+    const candidaturas = await res.json();
+    if (!Array.isArray(candidaturas) || candidaturas.length === 0) return DEFAULT_AVATAR;
+
+    // Encontra a candidatura mais recente que possua foto válida
+    const sorted = candidaturas.sort((a: any, b: any) => Number(b.ano_eleicao || 0) - Number(a.ano_eleicao || 0));
+    
+    const candComFoto = sorted.find((c: any) => {
+      const foto = c.foto || c.sq_candidato;
+      if (!foto) return false;
+      const fotoStr = String(foto).trim();
+      return fotoStr !== '' && !fotoStr.includes('avatar.png');
+    }) || sorted[0];
+
+    const photoIdentifier = candComFoto?.foto || candComFoto?.sq_candidato;
+    if (!photoIdentifier) return DEFAULT_AVATAR;
+
+    const photoStr = String(photoIdentifier).trim();
+    if (photoStr.startsWith('http://') || photoStr.startsWith('https://')) {
+      return photoStr;
+    }
+
+    return `https://f.centraleti.com.br/f/${photoStr.replace(/^\//, '')}`;
+  } catch (error) {
+    console.error(`Erro ao buscar foto na VPS para o id ${perfilId}:`, error);
+    return DEFAULT_AVATAR;
+  }
 }
 
 export default async function Image({
@@ -25,30 +69,41 @@ export default async function Image({
   const c1Id = resolvedSearch?.c1 || '';
   const c2Id = resolvedSearch?.c2 || '';
 
-  let first: any = null;
-  let second: any = null;
+  let firstPerfil: any = null;
+  let secondPerfil: any = null;
 
   if (c1Id && c2Id) {
     try {
+      // 1. Busca nomes e dados básicos do Supabase
       const { data: candidates } = await supabase
         .from('perfis_candidatos')
-        .select('id, nome_completo, nome_urna, foto, foto_path')
+        .select('id, nome_completo, nome_urna')
         .in('id', [c1Id, c2Id]);
 
       if (candidates && candidates.length > 0) {
-        const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-        first = byId.get(c1Id) || null;
-        second = byId.get(c2Id) || null;
+        const byId = new Map(candidates.map((c) => [c.id, c]));
+        firstPerfil = byId.get(c1Id) || null;
+        secondPerfil = byId.get(c2Id) || null;
       }
     } catch (err) {
-      console.error('Exceção ao buscar candidatos no OG:', err);
+      console.error('Exceção ao buscar candidatos do Supabase no OG:', err);
     }
   }
 
-  const leftImage = sanitizeImage(first?.foto || first?.foto_path || null);
-  const rightImage = sanitizeImage(second?.foto || second?.foto_path || null);
-  const leftName = (first?.nome_urna || first?.nome_completo || 'Candidato 1').slice(0, 18);
-  const rightName = (second?.nome_urna || second?.nome_completo || 'Candidato 2').slice(0, 18);
+  // 2. Busca as fotos reais via VPS
+  const [leftPhotoUrl, rightPhotoUrl] = await Promise.all([
+    c1Id ? fetchFotoFromVPS(c1Id) : Promise.resolve(DEFAULT_AVATAR),
+    c2Id ? fetchFotoFromVPS(c2Id) : Promise.resolve(DEFAULT_AVATAR),
+  ]);
+
+  // 3. Converte ambas as fotos em base64
+  const [leftImage, rightImage] = await Promise.all([
+    fetchImageAsBase64(leftPhotoUrl),
+    fetchImageAsBase64(rightPhotoUrl),
+  ]);
+
+  const leftName = (firstPerfil?.nome_urna || firstPerfil?.nome_completo || 'Candidato 1').slice(0, 18);
+  const rightName = (secondPerfil?.nome_urna || secondPerfil?.nome_completo || 'Candidato 2').slice(0, 18);
 
   return new ImageResponse(
     (
@@ -85,7 +140,6 @@ export default async function Image({
           }}
         />
 
-        {/* As tags img agora contêm width e height explícitos (222px) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '92%' }}>
           <div style={{ width: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
             <div

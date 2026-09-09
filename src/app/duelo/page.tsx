@@ -16,39 +16,19 @@ function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+// Asserte que a palavra 'async function' está abrindo a função corretamente
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
-}) {
+}) { // <-- Certifique-se de que a chave de abertura está aqui
   const { c1, c2, uf } = await searchParams;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
 
-  const ogImageUrl = `${baseUrl}/api/og?c1=${c1 || ''}&c2=${c2 || ''}&uf=${uf || ''}`;
+  const firstId = c1 || '';
+  const secondId = c2 || '';
+  const requestedUf = uf || '';
 
-  return {
-    title: 'Duelo Político',
-    openGraph: {
-      images: [
-        {
-          url: ogImageUrl,
-          width: 1200,
-          height: 630,
-          alt: 'Duelo Político',
-        },
-      ],
-    },
-  };
-}
-
-  const { data } = await supabase
-    .from('perfis_candidatos')
-    .select('id, nome_completo')
-    .in('id', [firstId, secondId]);
-  const namesById = new Map((data || []).map((candidate) => [candidate.id, candidate.nome_completo]));
-  const firstName = namesById.get(firstId);
-  const secondName = namesById.get(secondId);
-
+  // Exemplo de verificação que você tem no seu código:
   if (!firstName || !secondName) {
     return {
       title: 'Compare candidatos',
@@ -57,15 +37,11 @@ export async function generateMetadata({
     };
   }
 
-  const params = new URLSearchParams({ c1: firstId, c2: secondId });
-  if (requestedUf && AVAILABLE_UFS.some((uf) => uf === requestedUf)) {
-    params.set('uf', requestedUf);
-  }
-  const canonicalPath = `/duelo?${params.toString()}`;
-  const canonical = new URL(canonicalPath, getSiteUrl()).toString();
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
+  const ogImage = `${baseUrl}/api/og?c1=${firstId}&c2=${secondId}&uf=${requestedUf}`;
+  const canonical = `${baseUrl}/duelo?c1=${firstId}&c2=${secondId}`;
   const title = `${firstName} x ${secondName}`;
-  const description = `Compare ${firstName} e ${secondName} no Duelo Político e escolha quem representa melhor suas preferências.`;
-  const ogImage = buildDuelOgImageUrl(firstId, secondId, requestedUf);
+  const description = `Compare o perfil e histórico de ${firstName} e ${secondName}`;
 
   return {
     title,
@@ -84,12 +60,8 @@ export async function generateMetadata({
       images: [ogImage],
     },
   };
-}
+} // <-- Fechamento da função generateMetadata
 
 export default function Page() {
-  return (
-    <Suspense fallback={<div className="p-8 text-center">Carregando duelo...</div>}>
-      <DueloClient />
-    </Suspense>
-  );
+  return <DueloClient />;
 }

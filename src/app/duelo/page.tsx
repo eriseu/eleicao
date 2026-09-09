@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import DueloClient from './DueloClient';
 
-// Força o Next.js a ler a URL dinamicamente em tempo de requisição
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({
@@ -10,7 +9,6 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
 }) {
-  // O searchParams precisa obrigatoriamente do await no Next.js 15+
   const resolvedParams = await searchParams;
   const firstId = resolvedParams?.c1 || '';
   const secondId = resolvedParams?.c2 || '';
@@ -21,13 +19,20 @@ export async function generateMetadata({
 
   if (firstId && secondId) {
     try {
-      const { data: candidates } = await supabase
+      // Promise.race para cancelar a busca se demorar mais de 2.5s (evita erro 503)
+      const fetchPromise = supabase
         .from('perfis_candidatos')
         .select('id, nome_completo, nome_urna')
         .in('id', [firstId, secondId]);
 
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), 2500)
+      );
+
+      const { data: candidates }: any = await Promise.race([fetchPromise, timeoutPromise]);
+
       if (candidates && candidates.length > 0) {
-        const byId = new Map(candidates.map((c) => [c.id, c]));
+        const byId = new Map(candidates.map((c: any) => [c.id, c]));
         const c1 = byId.get(firstId);
         const c2 = byId.get(secondId);
 
@@ -35,23 +40,19 @@ export async function generateMetadata({
         secondName = c2?.nome_urna || c2?.nome_completo || '';
       }
     } catch (err) {
-      console.error('Erro Supabase OG:', err);
+      console.error('Erro/Timeout ao carregar metadados:', err);
     }
   }
 
-  // Se por algum motivo os IDs forem inválidos, usa o fallback genérico
-  if (!firstName || !secondName) {
-    return {
-      title: 'Duelo Político - Compare candidatos',
-      description: 'Escolha seu candidato e vote no duelo político!',
-    };
-  }
+  const title = firstName && secondName ? `${firstName} x ${secondName}` : 'Duelo Político';
+  const description =
+    firstName && secondName
+      ? `Compare o perfil e histórico de ${firstName} e ${secondName}`
+      : 'Escolha seu candidato e vote no duelo político!';
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
   const ogImage = `${baseUrl}/api/og?c1=${firstId}&c2=${secondId}&uf=${requestedUf}`;
   const canonical = `${baseUrl}/duelo?c1=${firstId}&c2=${secondId}`;
-  const title = `${firstName} x ${secondName}`;
-  const description = `Compare o perfil e histórico de ${firstName} e ${secondName}`;
 
   return {
     title,
@@ -61,14 +62,7 @@ export async function generateMetadata({
       title,
       description,
       url: canonical,
-      images: [
-        {
-          url: ogImage,
-          width: 1200,
-          height: 630,
-          alt: title,
-        },
-      ],
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card: 'summary_large_image',

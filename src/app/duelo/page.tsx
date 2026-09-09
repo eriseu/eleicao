@@ -1,12 +1,16 @@
 import { Suspense } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import DueloClient from './DueloClient'; // Ajuste o caminho da importação se necessário
+import DueloClient from './DueloClient';
+
+// Força o Next.js a ler a URL dinamicamente em tempo de requisição
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
 }) {
+  // O searchParams precisa obrigatoriamente do await no Next.js 15+
   const resolvedParams = await searchParams;
   const firstId = resolvedParams?.c1 || '';
   const secondId = resolvedParams?.c2 || '';
@@ -31,15 +35,15 @@ export async function generateMetadata({
         secondName = c2?.nome_urna || c2?.nome_completo || '';
       }
     } catch (err) {
-      console.error('Erro ao buscar dados dos candidatos para metadados:', err);
+      console.error('Erro Supabase OG:', err);
     }
   }
 
+  // Se por algum motivo os IDs forem inválidos, usa o fallback genérico
   if (!firstName || !secondName) {
     return {
-      title: 'Compare candidatos',
-      alternates: { canonical: '/duelo' },
-      robots: { index: false, follow: true },
+      title: 'Duelo Político - Compare candidatos',
+      description: 'Escolha seu candidato e vote no duelo político!',
     };
   }
 
@@ -57,7 +61,14 @@ export async function generateMetadata({
       title,
       description,
       url: canonical,
-      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: title,
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
@@ -70,7 +81,7 @@ export async function generateMetadata({
 
 export default function Page() {
   return (
-    <Suspense fallback={<div>Carregando...</div>}>
+    <Suspense fallback={<div>Carregando duelo...</div>}>
       <DueloClient />
     </Suspense>
   );

@@ -10,40 +10,40 @@ const DEFAULT_AVATAR = 'https://politica.centraleti.com.br/avatar.png';
 
 function sanitizeImage(src: string | null | undefined) {
   if (!src) return DEFAULT_AVATAR;
-  const trimmed = src.trim();
-  if (!trimmed) return DEFAULT_AVATAR;
+  const trimmed = String(src).trim();
+  if (!trimmed || trimmed.includes('avatar.png')) return DEFAULT_AVATAR;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  
+  // Caso seja apenas o ID da foto/sq_candidato ou caminho relativo
   return `https://f.centraleti.com.br/f/${trimmed.replace(/^\//, '')}`;
 }
 
-export default async function Image({ params, searchParams }: { params?: Promise<{ slug?: string }>; searchParams?: Promise<{ c1?: string; c2?: string; uf?: string }> }) {
-  const resolvedParams = params ? await params : undefined;
+export default async function Image({searchParams,}: {
+  searchParams?: Promise<{ c1?: string; c2?: string; uf?: string }>;
+}) {
   const resolvedSearch = searchParams ? await searchParams : undefined;
-  const c1Id = resolvedSearch?.c1 || resolvedParams?.slug || '';
+  const c1Id = resolvedSearch?.c1 || '';
   const c2Id = resolvedSearch?.c2 || '';
 
-  if (!c1Id || !c2Id) {
-    notFound();
-  }
-
+  // Remova o notFound() e deixe carregar os dados se existirem
   let first: any = null;
   let second: any = null;
 
-  try {
-    const { data: candidates, error } = await supabase
-      .from('perfis_candidatos')
-      .select('id, nome_completo, nome_urna, foto, foto_path')
-      .in('id', [c1Id, c2Id]);
+  if (c1Id && c2Id) {
+    try {
+      const { data: candidates, error } = await supabase
+        .from('perfis_candidatos')
+        .select('id, nome_completo, nome_urna, foto, foto_path')
+        .in('id', [c1Id, c2Id]);
 
-    if (error) {
-      console.error('Erro ao buscar candidatos:', error);
-    } else if (candidates && candidates.length > 0) {
-      const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-      first = byId.get(c1Id) || null;
-      second = byId.get(c2Id) || null;
+      if (!error && candidates) {
+        const byId = new Map(candidates.map((c) => [c.id, c]));
+        first = byId.get(c1Id) || null;
+        second = byId.get(c2Id) || null;
+      }
+    } catch (err) {
+      console.error('Exceção ao buscar candidatos no OG:', err);
     }
-  } catch (err) {
-    console.error('Exceção ao buscar candidatos:', err);
   }
 
   const leftImage = sanitizeImage(first?.foto || first?.foto_path || null);

@@ -4,7 +4,6 @@ import DueloClient from './DueloClient';
 
 export const dynamic = 'force-dynamic';
 
-// Interface para garantir que o TypeScript reconheça os campos do Supabase
 interface CandidatePerfil {
   id: string;
   nome_completo?: string | null;
@@ -26,20 +25,16 @@ export async function generateMetadata({
 
   if (firstId && secondId) {
     try {
-      const fetchPromise = supabase
+      const { data: candidates } = await supabase
         .from('perfis_candidatos')
         .select('id, nome_completo, nome_urna')
         .in('id', [firstId, secondId]);
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), 2500)
-      );
-
-      const response: any = await Promise.race([fetchPromise, timeoutPromise]);
-      const candidates = response?.data as CandidatePerfil[] | null;
-
       if (candidates && candidates.length > 0) {
-        const byId = new Map<string, CandidatePerfil>(candidates.map((c) => [c.id, c]));
+        const castedCandidates = candidates as CandidatePerfil[];
+        const byId = new Map<string, CandidatePerfil>(
+          castedCandidates.map((c) => [c.id, c])
+        );
         const c1 = byId.get(firstId);
         const c2 = byId.get(secondId);
 
@@ -47,7 +42,7 @@ export async function generateMetadata({
         secondName = c2?.nome_urna || c2?.nome_completo || '';
       }
     } catch (err) {
-      console.error('Erro/Timeout ao carregar metadados:', err);
+      console.error('Erro na geração de metadados:', err);
     }
   }
 
@@ -82,7 +77,7 @@ export async function generateMetadata({
 
 export default function Page() {
   return (
-    <Suspense fallback={<div>Carregando duelo...</div>}>
+    <Suspense fallback={<div className="p-8 text-white">Carregando...</div>}>
       <DueloClient />
     </Suspense>
   );

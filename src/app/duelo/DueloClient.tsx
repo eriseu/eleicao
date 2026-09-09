@@ -68,6 +68,9 @@ export default function DueloClient() {
     if (sharedMunicipio) setSelectedMunicipio(sharedMunicipio);
   }, [sharedUf, sharedMunicipio]);
 
+  if (!isMounted) {
+    return <div className="min-h-screen bg-slate-950 text-white p-8">Carregando duelo...</div>;
+  }
   useEffect(() => {
     if (isSharedDuel) return;
 

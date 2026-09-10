@@ -1,6 +1,11 @@
 import { Suspense } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import DueloClient from './DueloClient';
+import type { Metadata } from 'next';
+
+type Props = {
+  searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -11,34 +16,55 @@ interface CandidatePerfil {
 }
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const c1 = searchParams.c1 || '';
-  const c2 = searchParams.c2 || '';
-  const uf = searchParams.uf || '';
+  const params = await searchParams;
+  const c1 = params.c1 || '';
+  const c2 = params.c2 || '';
+  const uf = params.uf || '';
 
-  const ogUrl = `https://politica.centraleti.com.br/api/og?c1=${c1}&c2=${c2}&uf=${uf}`;
+  const baseUrl = 'https://politica.centraleti.com.br';
+  const title = 'Duelo Político';
+  const description = 'Escolha seu candidato e vote no duelo político!';
 
+  const ogParams = new URLSearchParams();
+  if (c1) ogParams.set('c1', c1);
+  if (c2) ogParams.set('c2', c2);
+  if (uf) ogParams.set('uf', uf);
+
+  const ogImage = `${baseUrl}/api/og?${ogParams.toString()}`;
+
+  const canonicalParams = new URLSearchParams();
+  if (c1) canonicalParams.set('c1', c1);
+  if (c2) canonicalParams.set('c2', c2);
+  if (uf) canonicalParams.set('uf', uf);
+
+  const canonical = `${baseUrl}/duelo?${canonicalParams.toString()}`;
+
+  // 2. O return DEVE estar estritamente dentro dos blocos { } da função generateMetadata
   return {
-    title: 'Duelo Político',
-    description: 'Escolha seu candidato e vote no duelo político!',
+    title,
+    description,
+    alternates: { canonical },
     openGraph: {
-      title: 'Duelo Político',
-      description: 'Escolha seu candidato e vote no duelo político!',
-      url: `https://politica.centraleti.com.br/duelo?c1=${c1}&c2=${c2}&uf=${uf}`,
+      title,
+      description,
+      url: canonical,
+      siteName: 'Duelo Político',
       images: [
         {
-          url: ogUrl,
+          url: ogImage,
+          secureUrl: ogImage,
           width: 1200,
           height: 630,
           type: 'image/png',
-          alt: 'Duelo Político',
+          alt: title,
         },
       ],
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'Duelo Político',
-      description: 'Escolha seu candidato e vote no duelo político!',
-      images: [ogUrl],
+      title,
+      description,
+      images: [ogImage],
     },
   };
 }

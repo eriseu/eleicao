@@ -1,6 +1,6 @@
- "use client";
+"use client";
 
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react/no-unescaped-entities */
+/* eslint-disable @typescript-eslint/no-explicit-any, react/no-unescaped-entities */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -62,25 +62,22 @@ export default function DueloClient() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
+  // 1. Marca componente como montado no cliente
   useEffect(() => {
     setIsMounted(true);
     if (sharedUf) setSelectedUf(sharedUf);
     if (sharedMunicipio) setSelectedMunicipio(sharedMunicipio);
   }, [sharedUf, sharedMunicipio]);
 
-  if (!isMounted) {
-    return <div className="min-h-screen bg-slate-950 text-white p-8">Carregando duelo...</div>;
-  }
+  // 2. Sincronização segura da URL (Apenas no cliente)
   useEffect(() => {
-    if (isSharedDuel) return;
+    if (!isMounted || isSharedDuel) return;
 
     const params = new URLSearchParams(searchParams.toString());
 
     if (!selectedUf || selectedUf === 'BR') {
       params.delete('uf');
-      if (selectedMunicipio) {
-        params.delete('municipio');
-      }
+      params.delete('municipio');
     } else {
       params.set('uf', selectedUf);
       if (selectedMunicipio) {
@@ -96,9 +93,12 @@ export default function DueloClient() {
     if (currentUrl !== nextUrl) {
       router.replace(nextUrl, { scroll: false });
     }
-  }, [isSharedDuel, router, searchParams, selectedMunicipio, selectedUf]);
+  }, [isMounted, isSharedDuel, router, searchParams, selectedMunicipio, selectedUf]);
 
+  // 3. Carregamento de municípios
   useEffect(() => {
+    if (!isMounted) return;
+
     if (selectedUf === 'BR') {
       setMunicipios(buildStateOptions());
       return;
@@ -112,7 +112,6 @@ export default function DueloClient() {
           return;
         }
         const data = await response.json();
-
         setMunicipios(buildMunicipioOptions(data || [], selectedUf));
       } catch (error) {
         console.error('Erro ao carregar municípios:', error);
@@ -121,7 +120,7 @@ export default function DueloClient() {
     }
 
     void loadMunicipios();
-  }, [selectedUf]);
+  }, [isMounted, selectedUf]);
 
   const getCargosPorEscopo = useCallback(() => {
     if (selectedUf === 'BR') {
@@ -133,99 +132,89 @@ export default function DueloClient() {
     return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-    const processCandidaturas = (perfis: any[], candidaturas: any[]): Candidato[] => {
-      const perfisIncluidos = new Set<string>();
+  const processCandidaturas = useCallback((perfis: any[], candidaturas: any[]): Candidato[] => {
+    const perfisIncluidos = new Set<string>();
 
-      return perfis.flatMap((perfil) => {
-        if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) return [];
+    return perfis.flatMap((perfil) => {
+      if (!perfil || !perfil.id || perfisIncluidos.has(perfil.id)) return [];
 
-        const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
-        if (candsDoPerfil.length === 0) return [];
+      const candsDoPerfil = candidaturas.filter((c: any) => c.perfil_id === perfil.id);
+      if (candsDoPerfil.length === 0) return [];
 
-        // Ordena do mais recente para o mais antigo
-        const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+      const sortedCands = candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao));
+      const cargosPermitidos = getCargosPorEscopo();
 
-        // 1. Determina quais cargos são válidos para o filtro ATUAL da tela
-        const cargosPermitidos = getCargosPorEscopo();
+      const candidaturaDoEscopo = sortedCands.find((c: any) => {
+        const cargoStr = (c.cargo || '').toUpperCase().trim();
+        const ufStr = normalizeText(c.uf || perfil.uf || '');
+        const munStr = normalizeText(c.municipio || '');
+        const municipioSelecionado = normalizeText(selectedMunicipio);
 
-        // 2. Busca a candidatura mais recente que COMPATIBILIZA com o escopo atual
-        const candidaturaDoEscopo = sortedCands.find((c: any) => {
-          const cargoStr = (c.cargo || '').toUpperCase().trim();
-          const ufStr = normalizeText(c.uf || perfil.uf || '');
-          const munStr = normalizeText(c.municipio || '');
-          const municipioSelecionado = normalizeText(selectedMunicipio);
-
-          // Se for escopo BR (Nacional)
-          if (selectedUf === 'BR') {
-            return cargosPermitidos.includes(cargoStr);
-          }
-
-          // Se for escopo Municipal
-          if (selectedMunicipio) {
-            return ufStr === normalizeText(selectedUf) &&
-                   munStr === municipioSelecionado &&
-                   cargosPermitidos.includes(cargoStr);
-          }
-
-          // Se for escopo Estadual
-          return ufStr === normalizeText(selectedUf) && cargosPermitidos.includes(cargoStr);
-        });
-
-        // Se o candidato não tiver NENHUMA candidatura condizente com o filtro atual, desconsidera
-        const candidaturaAlvo = candidaturaDoEscopo || sortedCands[0];
-
-        // Busca foto válida
-        const candidaturaComFoto = sortedCands.find((c: any) => {
-          const foto = c.foto || c.sq_candidato;
-          if (!foto) return false;
-          const fotoStr = String(foto).trim();
-          return fotoStr !== '' && !fotoStr.includes('avatar.png');
-        });
-
-        const fotoFinal = candidaturaComFoto 
-          ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
-          : candidaturaAlvo.foto;
-
-        if (!fotoFinal || String(fotoFinal).trim() === '' || String(fotoFinal).includes('avatar.png')) {
-          return [];
+        if (selectedUf === 'BR') {
+          return cargosPermitidos.includes(cargoStr);
         }
 
-        perfisIncluidos.add(perfil.id);
+        if (selectedMunicipio) {
+          return ufStr === normalizeText(selectedUf) &&
+                 munStr === municipioSelecionado &&
+                 cargosPermitidos.includes(cargoStr);
+        }
 
-        const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaAlvo.cargo || '').toUpperCase().trim());
-
-        return [{
-          id: perfil.id,
-          nome_completo: perfil.nome_completo,
-          cpf: perfil.cpf,
-          titulo_eleitoral: perfil.titulo_eleitoral,
-          created_at: perfil.created_at,
-          elo_score: perfil.elo_score ?? 1200,
-          matches_count: perfil.matches_count ?? 0,
-          nome_urna: candidaturaAlvo.nome_urna || perfil.nome_completo,
-          partido: candidaturaAlvo.partido || 'S/P',
-          cargo: candidaturaAlvo.cargo, // Exibe exatamente o cargo referente ao escopo!
-          uf: isNacional ? 'BR' : (candidaturaAlvo.uf || perfil.uf),
-          municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaAlvo.cargo || '').toUpperCase().trim())
-            ? '' 
-            : candidaturaAlvo.municipio,
-          foto: fotoFinal,
-          candidaturas: sortedCands,
-          ultima_candidatura: {
-            ...candidaturaAlvo,
-            foto: fotoFinal,
-            perfil_id: perfil.id,
-            created_at: perfil.created_at,
-            sq_candidato: Number(candidaturaAlvo.sq_candidato) || 0,
-          },
-        }];
+        return ufStr === normalizeText(selectedUf) && cargosPermitidos.includes(cargoStr);
       });
-    };
+
+      const candidaturaAlvo = candidaturaDoEscopo || sortedCands[0];
+
+      const candidaturaComFoto = sortedCands.find((c: any) => {
+        const foto = c.foto || c.sq_candidato;
+        if (!foto) return false;
+        const fotoStr = String(foto).trim();
+        return fotoStr !== '' && !fotoStr.includes('avatar.png');
+      });
+
+      const fotoFinal = candidaturaComFoto 
+        ? (candidaturaComFoto.foto || candidaturaComFoto.sq_candidato) 
+        : candidaturaAlvo.foto;
+
+      if (!fotoFinal || String(fotoFinal).trim() === '' || String(fotoFinal).includes('avatar.png')) {
+        return [];
+      }
+
+      perfisIncluidos.add(perfil.id);
+
+      const isNacional = CARGOS_POR_ESCOPO.nacional.includes((candidaturaAlvo.cargo || '').toUpperCase().trim());
+
+      return [{
+        id: perfil.id,
+        nome_completo: perfil.nome_completo,
+        cpf: perfil.cpf,
+        titulo_eleitoral: perfil.titulo_eleitoral,
+        created_at: perfil.created_at,
+        elo_score: perfil.elo_score ?? 1200,
+        matches_count: perfil.matches_count ?? 0,
+        nome_urna: candidaturaAlvo.nome_urna || perfil.nome_completo,
+        partido: candidaturaAlvo.partido || 'S/P',
+        cargo: candidaturaAlvo.cargo,
+        uf: isNacional ? 'BR' : (candidaturaAlvo.uf || perfil.uf),
+        municipio: isNacional || CARGOS_ESTADUAIS_NACIONAIS.includes((candidaturaAlvo.cargo || '').toUpperCase().trim())
+          ? '' 
+          : candidaturaAlvo.municipio,
+        foto: fotoFinal,
+        candidaturas: sortedCands,
+        ultima_candidatura: {
+          ...candidaturaAlvo,
+          foto: fotoFinal,
+          perfil_id: perfil.id,
+          created_at: perfil.created_at,
+          sq_candidato: Number(candidaturaAlvo.sq_candidato) || 0,
+        },
+      }];
+    });
+  }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
 
   const fetchPerfisEmLotes = async (ids: string[]) => {
     if (ids.length === 0) return [];
     
-    // Divide os IDs em lotes pequenos de até 15 para não quebrar limites de URL
     const CHUNK_SIZE = 15;
     const chunks: string[][] = [];
     for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
@@ -343,7 +332,6 @@ export default function DueloClient() {
         return;
       }
 
-      // Se a resposta da VPS já for um array de objetos completos dos perfis:
       if (typeof dataVps[0] === 'object' && dataVps[0] !== null && dataVps[0].id) {
         const perfilIds = dataVps.map((p: any) => p.id);
         const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
@@ -362,10 +350,8 @@ export default function DueloClient() {
         return;
       }
 
-      // Se a VPS responder apenas com IDs de perfil:
       const perfilIdsVps: string[] = dataVps.map((item: any) => typeof item === 'string' ? item : item.id);
       const idsEmbaralhados = [...perfilIdsVps].sort(() => Math.random() - 0.5);
-      // Pega no máximo 30 candidatos para agilizar o carregamento
       const idsAmostra = idsEmbaralhados.slice(0, 30);
 
       const perfisData = await fetchPerfisEmLotes(idsAmostra);
@@ -391,11 +377,13 @@ export default function DueloClient() {
     } finally {
       setLoadingCandidates(false);
     }
-  }, [isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo, hasValidSharedUf, sharedC1Id, sharedC2Id]);
+  }, [isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo, hasValidSharedUf, sharedC1Id, sharedC2Id, processCandidaturas]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    if (isMounted) {
+      void loadData();
+    }
+  }, [isMounted, loadData]);
 
   const displayedCandidates = useMemo(() => {
     return [c1, c2].filter(Boolean) as Candidato[];
@@ -409,36 +397,34 @@ export default function DueloClient() {
     setSelectedMunicipio('');
   };
 
-    const getRankingUrl = (candidate: Candidato) => {
-      if (selectedUf === 'BR') {
-        const params = new URLSearchParams({
-          uf: 'BR',
-          escopo: 'nacional',
-          highlight: candidate.id,
-        });
-        return `/ranking?${params.toString()}`;
-      }
-
-      if (selectedMunicipio) {
-        const params = new URLSearchParams({
-          uf: selectedUf,
-          municipio: selectedMunicipio,
-          escopo: 'municipal',
-          highlight: candidate.id,
-        });
-        return `/ranking?${params.toString()}`;
-      }
-
-      // 💡 AJUSTE AQUI: Para garantir que qualquer candidato de MT (federal, estadual ou municipal)
-      // seja renderizado e possa receber o highlight
+  const getRankingUrl = (candidate: Candidato) => {
+    if (selectedUf === 'BR') {
       const params = new URLSearchParams({
-        uf: selectedUf,
-        escopo: 'todos', // Altere de 'estadual' para 'todos'
+        uf: 'BR',
+        escopo: 'nacional',
         highlight: candidate.id,
       });
-
       return `/ranking?${params.toString()}`;
-    };
+    }
+
+    if (selectedMunicipio) {
+      const params = new URLSearchParams({
+        uf: selectedUf,
+        municipio: selectedMunicipio,
+        escopo: 'municipal',
+        highlight: candidate.id,
+      });
+      return `/ranking?${params.toString()}`;
+    }
+
+    const params = new URLSearchParams({
+      uf: selectedUf,
+      escopo: 'todos',
+      highlight: candidate.id,
+    });
+
+    return `/ranking?${params.toString()}`;
+  };
 
   const escolher = async (escolhido: Candidato, outro: Candidato) => {
     if (submitting || !isSharedDuel) return;
@@ -474,17 +460,13 @@ export default function DueloClient() {
   };
 
   const handleShare = async () => {
-    console.log('[Share] Iniciando compartilhamento...');
-    
     if (!c1 || !c2) {
-      console.warn('[Share] Candidatos não selecionados:', { c1: c1?.nome_urna, c2: c2?.nome_urna });
       setFeedback('❌ Selecione 2 candidatos para compartilhar.');
       setTimeout(() => setFeedback(''), 4000);
       return;
     }
 
     try {
-      console.log('[Share] Construindo URL...');
       const params = new URLSearchParams({ 
         uf: selectedUf, 
         c1: c1.id, 
@@ -497,29 +479,17 @@ export default function DueloClient() {
 
       const targetUrl = `/duelo?${params.toString()}`;
       const shareUrl = new URL(targetUrl, process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).toString();
-      console.log('[Share] Target URL:', targetUrl);
-      console.log('[Share] Share URL:', shareUrl);
 
-      if (!shareUrl || shareUrl.length < 10) {
-        throw new Error(`URL inválida: ${shareUrl}`);
-      }
-
-      console.log('[Share] Copiando para clipboard...');
       await navigator.clipboard.writeText(shareUrl);
-      console.log('[Share] ✅ Sucesso!');
-      
       setFeedback('✅ Link copiado para compartilhar!');
       setTimeout(() => setFeedback(''), 4000);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error('[Share Error] Falha ao compartilhar:', errorMsg);
-      console.error('[Share Error] Stack:', err instanceof Error ? err.stack : '(sem stack)');
-      
+    } catch {
       setFeedback('❌ Erro ao copiar link, tente novamente.');
       setTimeout(() => setFeedback(''), 4000);
     }
   };
 
+  // Trava única de montagem na renderização final
   if (!isMounted) {
     return <div className="min-h-screen bg-slate-950 p-8 text-center text-slate-400">Carregando duelo...</div>;
   }

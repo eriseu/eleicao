@@ -20,12 +20,12 @@ export async function generateMetadata({
   let requestedUf = '';
 
   try {
-    const resolvedParams = await searchParams;
-    firstId = resolvedParams?.c1 || '';
-    secondId = resolvedParams?.c2 || '';
-    requestedUf = resolvedParams?.uf || '';
+    const params = await searchParams;
+    firstId = params?.c1 || '';
+    secondId = params?.c2 || '';
+    requestedUf = params?.uf || '';
   } catch (e) {
-    console.error('Erro ao resolver searchParams:', e);
+    // Fallback gracioso para evitar crash no servidor
   }
 
   let firstName = '';
@@ -33,16 +33,14 @@ export async function generateMetadata({
 
   if (firstId && secondId) {
     try {
-      const { data: candidates, error } = await supabase
+      const { data: candidates } = await supabase
         .from('perfis_candidatos')
         .select('id, nome_completo, nome_urna')
         .in('id', [firstId, secondId]);
 
-      if (!error && candidates && candidates.length > 0) {
-        const castedCandidates = candidates as CandidatePerfil[];
-        const byId = new Map<string, CandidatePerfil>(
-          castedCandidates.map((c) => [c.id, c])
-        );
+      if (candidates && candidates.length > 0) {
+        const casted = candidates as CandidatePerfil[];
+        const byId = new Map(casted.map((c) => [c.id, c]));
         const c1 = byId.get(firstId);
         const c2 = byId.get(secondId);
 
@@ -50,7 +48,7 @@ export async function generateMetadata({
         secondName = c2?.nome_urna || c2?.nome_completo || '';
       }
     } catch (err) {
-      console.error('Erro ao buscar candidatos para metadados:', err);
+      console.error('Erro ao gerar metadados:', err);
     }
   }
 
@@ -79,10 +77,8 @@ export async function generateMetadata({
           width: 1200,
           height: 630,
           alt: title,
-          type: 'image/png',
         },
       ],
-      type: 'website',
     },
     twitter: {
       card: 'summary_large_image',
@@ -95,7 +91,7 @@ export async function generateMetadata({
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="p-8 text-white">Carregando...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-white p-8">Carregando duelo...</div>}>
       <DueloClient />
     </Suspense>
   );

@@ -52,9 +52,6 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <head>
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta property="og:image:type" content="image/png" />
         <link rel="preconnect" href="https://f.centraleti.com.br" />
 	      <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0388943655208566" 
         crossOrigin="anonymous"></script>

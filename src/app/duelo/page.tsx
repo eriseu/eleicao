@@ -10,47 +10,38 @@ interface CandidatePerfil {
   nome_urna?: string | null;
 }
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: Promise<{ c1?: string; c2?: string; uf?: string }>;
-}) {
-  let firstId = '';
-  let secondId = '';
-  let requestedUf = '';
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const c1 = searchParams.c1 || '';
+  const c2 = searchParams.c2 || '';
+  const uf = searchParams.uf || '';
 
-  try {
-    const params = await searchParams;
-    firstId = params?.c1 || '';
-    secondId = params?.c2 || '';
-    requestedUf = params?.uf || '';
-  } catch (e) {
-    // Fallback silencioso
-  }
+  const ogUrl = `https://politica.centraleti.com.br/api/og?c1=${c1}&c2=${c2}&uf=${uf}`;
 
-  let firstName = '';
-  let secondName = '';
-
-  if (firstId && secondId) {
-    try {
-      const { data: candidates } = await supabase
-        .from('perfis_candidatos')
-        .select('id, nome_completo, nome_urna')
-        .in('id', [firstId, secondId]);
-
-      if (candidates && candidates.length > 0) {
-        const casted = candidates as CandidatePerfil[];
-        const byId = new Map(casted.map((c) => [c.id, c]));
-        const c1 = byId.get(firstId);
-        const c2 = byId.get(secondId);
-
-        firstName = c1?.nome_urna || c1?.nome_completo || '';
-        secondName = c2?.nome_urna || c2?.nome_completo || '';
-      }
-    } catch (err) {
-      console.error('Erro ao gerar metadados:', err);
-    }
-  }
+  return {
+    title: 'Duelo Político',
+    description: 'Escolha seu candidato e vote no duelo político!',
+    openGraph: {
+      title: 'Duelo Político',
+      description: 'Escolha seu candidato e vote no duelo político!',
+      url: `https://politica.centraleti.com.br/duelo?c1=${c1}&c2=${c2}&uf=${uf}`,
+      images: [
+        {
+          url: ogUrl,
+          width: 1200,
+          height: 630,
+          type: 'image/png',
+          alt: 'Duelo Político',
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: 'Duelo Político',
+      description: 'Escolha seu candidato e vote no duelo político!',
+      images: [ogUrl],
+    },
+  };
+}
 
   const title = firstName && secondName ? `${firstName} x ${secondName}` : 'Duelo Político';
   const description =

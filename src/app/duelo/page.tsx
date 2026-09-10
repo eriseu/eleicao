@@ -25,7 +25,7 @@ export async function generateMetadata({
     secondId = params?.c2 || '';
     requestedUf = params?.uf || '';
   } catch (e) {
-    // Fallback gracioso para evitar crash no servidor
+    // Fallback silencioso
   }
 
   let firstName = '';
@@ -59,8 +59,17 @@ export async function generateMetadata({
       : 'Escolha seu candidato e vote no duelo político!';
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
+  
+  // 1. Preserva o parâmetro `uf` na imagem OG
   const ogImage = `${baseUrl}/api/og?c1=${firstId}&c2=${secondId}&uf=${requestedUf}`;
-  const canonical = `${baseUrl}/duelo?c1=${firstId}&c2=${secondId}`;
+  
+  // 2. Preserva o `uf` na URL canônica e no og:url para evitar discrepância no Facebook
+  const canonicalParams = new URLSearchParams();
+  if (firstId) canonicalParams.set('c1', firstId);
+  if (secondId) canonicalParams.set('c2', secondId);
+  if (requestedUf) canonicalParams.set('uf', requestedUf);
+  
+  const canonical = `${baseUrl}/duelo?${canonicalParams.toString()}`;
 
   return {
     title,
@@ -74,7 +83,7 @@ export async function generateMetadata({
       images: [
         {
           url: ogImage,
-          width: 1200,
+          width: 1200, // Corrige o aviso de dimensões do Facebook
           height: 630,
           alt: title,
         },

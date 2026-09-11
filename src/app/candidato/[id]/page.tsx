@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // <-- Importado para redirecionamento no Client Component
 import { supabase } from '@/lib/supabaseClient';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-// Helper para validar e ignorar valores nulos ou marcadores como #NULO
 function eValido(valor: any): boolean {
   if (valor === null || valor === undefined) return false;
   const str = String(valor).trim().toUpperCase();
@@ -39,6 +39,7 @@ function formatarGenero(genero: string | null): string | null {
 
 export default function Perfil({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
+  const router = useRouter(); // <-- Hook de navegação
 
   const [candidato, setCandidato] = useState<any | null>(null);
   const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
@@ -53,11 +54,22 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         setLoading(true);
         // 1. Consulta dados no Postgres via VPS
         const res = await fetch(`/api/candidato/${resolvedParams.id}`);
-        if (!res.ok) throw new Error('Candidato não encontrado');
+        
+        // SE NÃO ENCONTRAR NA API (status 404 ou !res.ok) -> REDIRECIONA DIRETO PARA /ranking
+        if (!res.ok) {
+          router.replace('/ranking');
+          return;
+        }
 
         const data = await res.json();
         const candData = data.candidato || {};
         const historico = data.historico || [];
+
+        // Se a API retornar sucesso mas o objeto candidato vier vazio
+        if (!candData || Object.keys(candData).length === 0) {
+          router.replace('/ranking');
+          return;
+        }
 
         setHistoricoCandidaturas(historico);
 
@@ -71,7 +83,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         setCandidato(candidatoBase);
         setLoading(false);
 
-        // 2. Consulta dados no Supabase trazendo NOME_COMPLETO para não perder a referência
+        // 2. Consulta dados no Supabase
         setLoadingStats(true);
         const perfilIdParaConsulta = candData.perfil_id || candData.id || resolvedParams.id;
 
@@ -101,6 +113,8 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         }
       } catch (err) {
         console.error('Erro ao carregar perfil:', err);
+        // Em caso de erro grave na busca, redireciona para o ranking
+        router.replace('/ranking');
       } finally {
         setLoading(false);
         setLoadingStats(false);
@@ -108,19 +122,16 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
     }
 
     loadPerfilCompleto();
-  }, [resolvedParams.id]);
+  }, [resolvedParams.id, router]);
 
   if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
-  if (!candidato) return <p className="text-center mt-12 text-red-400">Candidato não encontrado.</p>;
+  if (!candidato) return null; // Evita piscar a tela zerada enquanto faz o redirecionamento
 
   const candAtual = historicoCandidaturas[0] || candidato;
   const anoReferencia = candAtual?.ano_eleicao || candidato?.ano_eleicao || '2026';
   const idade = calcularIdade(candidato.data_nascimento);
-
-  // Número da Urna da Candidatura Atual (caso exista)
   const nrCandidatoAtual = candAtual.nr_candidato || candidato.nr_candidato;
 
-  // Nome principal exibe o Nome Completo se existir
   const nomeExibicao = eValido(candidato.nome_completo) 
     ? candidato.nome_completo 
     : candidato.nome_urna;
@@ -129,7 +140,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
     <main className="max-w-md mx-auto px-4 py-6 text-slate-100">
       <div className="bg-slate-900 rounded-3xl border border-white/10 shadow-xl p-5 flex flex-col items-center">
         
-        {/* Foto do Candidato */}
         <div className="relative">
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-slate-700 bg-slate-950 shadow-lg">
             <CandidateImage 
@@ -140,25 +150,21 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Nome Completo */}
         <h1 className="text-lg font-black text-white mt-4 text-center leading-tight">
           {nomeExibicao}
         </h1>
 
-        {/* Nome Social (Apenas se for válido e diferente de #NULO) */}
         {eValido(candidato.nome_social) && (
           <p className="text-xs font-medium text-slate-400 mt-1 text-center">
             Nome social: <span className="text-slate-200">{candidato.nome_social}</span>
           </p>
         )}
 
-        {/* Cargo, Partido e Número de Urna Atual */}
         <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
           <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
             {candAtual.cargo || candidato.cargo} • {candAtual.partido || candidato.partido}
           </span>
 
-          {/* Exibe o número apenas se for válido e não nulo */}
           {eValido(nrCandidatoAtual) && (
             <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-full">
               Nº {nrCandidatoAtual}
@@ -166,7 +172,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           )}
         </div>
 
-        {/* Score ELO e Disputas */}
         <div className="grid grid-cols-2 gap-3 w-full mt-5 bg-slate-950/50 border border-white/5 p-3 rounded-2xl">
           <div className="text-center border-r border-white/10 pr-2">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ELO</span>
@@ -182,7 +187,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Ficha Técnica */}
         <div className="w-full mt-5 space-y-2 text-xs">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Ficha Técnica</h3>
 
@@ -240,7 +244,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           </div>
         </div>
 
-        {/* Histórico Eleitoral */}
         <div className="w-full mt-5 border-t border-white/10 pt-4">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Histórico Eleitoral</h3>
 
@@ -266,7 +269,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
                         </span>
                       </div>
 
-                      {/* Situação da Candidatura no mandato */}
                       {eValido(cand.situacao_candidatura) && (
                         <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
                           {cand.situacao_candidatura}
@@ -277,7 +279,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
                     <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
                       <span className="truncate">
                         {cand.cargo} ({cand.partido})
-                        {/* Exibe o número no histórico caso exista nessa eleição específica */}
                         {eValido(cand.nr_candidato) && (
                           <span className="font-mono text-amber-300 ml-1 font-semibold">
                             - Nº {cand.nr_candidato}
@@ -289,7 +290,6 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
                       </span>
                     </div>
 
-                    {/* Resultado do Turno (Ocultado se for #NULO) */}
                     {eValido(cand.resultado_turno) && (
                       <p className="text-[10px] text-slate-400 font-medium mt-1 border-t border-white/5 pt-1">
                         Resultado: <span className="text-slate-200 capitalize">{String(cand.resultado_turno).toLowerCase()}</span>

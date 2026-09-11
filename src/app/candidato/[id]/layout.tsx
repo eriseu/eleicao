@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { cache } from 'react';
+import { redirect } from 'next/navigation'; // <-- Importe o redirect
 import { supabase } from '@/lib/supabaseClient';
 
 type CandidateLayoutProps = {
@@ -22,7 +23,7 @@ const getCandidate = cache(async (id: string) => {
       .limit(1),
   ]);
 
-  if (!profile) return null;
+  if (!profile && (!candidacies || candidacies.length === 0)) return null;
   return { ...profile, candidacy: candidacies?.[0] || null };
 });
 
@@ -37,9 +38,7 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
     };
   }
 
-  // CORREÇÃO AQUI: nome_completo vem de candidate e nome_urna vem de candidate.candidacy
   const displayName = candidate.nome_completo || candidate.candidacy?.nome_urna || 'Perfil Político';
-  
   const details = [
     candidate.candidacy?.cargo,
     candidate.candidacy?.partido,
@@ -48,20 +47,13 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
   ].filter(Boolean).join(' · ');
 
   const title = `${displayName} — perfil político`;
-  const description = `Conheça o perfil de ${candidate.nome_completo}${details ? `: ${details}` : ''}. Veja sua pontuação Elo e participação nos duelos.`;
+  const description = `Conheça o perfil de ${candidate.nome_completo}${details ? `: ${details}` : ''}.`;
   const canonical = `/candidato/${encodeURIComponent(id)}`;
 
   return {
     title,
     description,
     alternates: { canonical },
-    openGraph: {
-      type: 'profile',
-      title,
-      description,
-      url: canonical,
-    },
-    twitter: { card: 'summary', title, description },
   };
 }
 
@@ -69,33 +61,10 @@ export default async function CandidateLayout({ children, params }: CandidateLay
   const { id } = await params;
   const candidate = await getCandidate(id);
 
-  if (!candidate) return children;
+  // SE NÃO EXISTIR CANDIDATO, REDIRECIONA IMEDIATAMENTE NO SERVIDOR
+  if (!candidate) {
+    redirect('/ranking');
+  }
 
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'Person',
-    name: candidate.nome_completo,
-    alternateName: candidate.candidacy?.nome_urna || undefined,
-    description: [candidate.candidacy?.cargo, candidate.candidacy?.partido].filter(Boolean).join(' · '),
-    address: candidate.candidacy?.uf
-      ? {
-          '@type': 'PostalAddress',
-          addressLocality: candidate.candidacy.municipio || undefined,
-          addressRegion: candidate.candidacy.uf,
-          addressCountry: 'BR',
-        }
-      : undefined,
-  };
-
-  return (
-    <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(structuredData).replace(/</g, '\\u003c'),
-        }}
-      />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }

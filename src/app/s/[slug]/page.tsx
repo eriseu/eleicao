@@ -4,6 +4,8 @@ import { decodeShortLinkTarget } from '@/lib/shortLink';
 import { buildDuelOgImageUrl } from '@/lib/duelOgImage';
 import { supabase } from '@/lib/supabaseClient';
 import { getSiteUrl } from '@/lib/seo';
+import { generateMetadata as rankingMetadata } from '@/app/ranking/page';
+import { generateMetadata as candidateMetadata } from '@/app/candidato/[id]/layout';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -26,7 +28,7 @@ async function resolveShortLink(target: string) {
         c1,
         c2,
         uf: uf || undefined,
-        url: `/duelo?${new URLSearchParams({ c1, c2, ...(uf && { uf }) }).toString()}`,
+        url: pathname + url.search,
       };
     }
   }
@@ -39,7 +41,7 @@ async function resolveShortLink(target: string) {
       type: 'ranking',
       uf: uf || 'BR',
       municipio: municipio || undefined,
-      url: `/ranking?${new URLSearchParams({ uf: uf || 'BR', ...(municipio && { municipio }) }).toString()}`,
+      url: pathname + url.search,
     };
   }
 
@@ -60,7 +62,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     try {
       const { data, error } = await supabase
         .from('perfis_candidatos')
-        .select('id, nome_completo, nome_urna')
+        .select('id, nome_completo')
         .in('id', [resolved.c1, resolved.c2]);
 
       if (!error && data && data.length > 0) {
@@ -69,7 +71,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         const second = byId.get(resolved.c2);
 
         if (first && second) {
-          const title = `${first.nome_urna || first.nome_completo} x ${second.nome_urna || second.nome_completo}`;
+          const title = `${first.nome_completo} x ${second.nome_completo}`;
           const description = `Compare ${first.nome_completo} e ${second.nome_completo} no Duelo Político e escolha quem representa melhor suas preferências.`;
           const ogImage = buildDuelOgImageUrl(resolved.c1, resolved.c2, resolved.uf);
 
@@ -123,15 +125,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   if (resolved.type === 'ranking') {
-    return {
-      title: 'Ranking de candidatos',
-      description: 'Veja os candidatos mais bem posicionados no ranking político por Brasil, estado e município.',
-      openGraph: {
-        title: 'Ranking de candidatos',
-        description: 'Acompanhe os candidatos mais bem posicionados no Duelo Político.',
-        url: resolved.url,
-      },
-    };
+    const url = new URL(target, getSiteUrl());
+    return rankingMetadata({ searchParams: Promise.resolve(Object.fromEntries(url.searchParams)) });
+  }
+  const candidateMatch = new URL(target, getSiteUrl()).pathname.match(/^\/candidato\/([^/]+)$/);
+  if (candidateMatch) {
+    return candidateMetadata({ params: Promise.resolve({ id: decodeURIComponent(candidateMatch[1]) }), children: null });
   }
 
   return {

@@ -5,5 +5,5 @@ export function buildDuelOgImageUrl(c1: string, c2: string, uf?: string) {
   if (uf) params.set('uf', uf);
   
   // Retorna a URL ABSOLUTA apontando para a imagem OG
-  return new URL(`/duelo/opengraph-image?${params.toString()}`, getSiteUrl()).toString();
+  return new URL(`/api/og?${params.toString()}`, getSiteUrl()).toString();
 }

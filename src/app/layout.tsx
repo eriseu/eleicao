@@ -9,7 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = getSiteUrl();
   const siteTitle = 'Duelo Político - Quem te representa melhor?';
   const siteDescription = 'Compare candidatos e veja quem está mais alinhado com suas escolhas. Participe do ranking e compartilhe seus duelos.';
-  const ogImageUrl = `${siteUrl}/politica.centraleti.com.br.png`;
+  const ogImageUrl = `${siteUrl}/api/og`;
 
   return {
     metadataBase: new URL(siteUrl),

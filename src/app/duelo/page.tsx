@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { getSiteUrl } from '@/lib/seo';
 import DueloClient from './DueloClient';
 import type { Metadata } from 'next';
 
@@ -9,19 +9,13 @@ type Props = {
 
 export const dynamic = 'force-dynamic';
 
-interface CandidatePerfil {
-  id: string;
-  nome_completo?: string | null;
-  nome_urna?: string | null;
-}
-
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const params = await searchParams;
   const c1 = params.c1 || '';
   const c2 = params.c2 || '';
   const uf = params.uf || '';
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://politica.centraleti.com.br';
+  const baseUrl = getSiteUrl();
 
   const ogParams = new URLSearchParams();
   if (c1) ogParams.set('c1', c1);

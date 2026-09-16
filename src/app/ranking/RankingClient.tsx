@@ -366,10 +366,10 @@ function RankingContent() {
 
         <section className="mb-6 rounded-[32px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-slate-950/30">
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block">
+            <label className="block min-w-0">
               <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">Estado</span>
               <select
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
+                className="min-w-0 max-w-full w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={selectedUf}
                 onChange={(event) => {
                   setSelectedUf(event.target.value);
@@ -385,12 +385,12 @@ function RankingContent() {
                 ))}
               </select>
             </label>
-            <label className="block">
+            <label className="block min-w-0">
               <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-slate-400">
                 {selectedUf === 'BR' ? 'Estado' : 'Município'}
               </span>
               <select
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
+                className="min-w-0 max-w-full w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={selectedMunicipio}
                 onChange={(event) => {
                   const nextValue = event.target.value;
@@ -431,10 +431,10 @@ function RankingContent() {
                 })}
               </select>
             </label>
-            <div className="flex flex-col items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Escopo</p>
-                <p className="mt-2 text-sm text-slate-200">{selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}</p>
+                <p className="mt-2 break-words text-sm text-slate-200">{selectedUf === 'BR' ? 'Brasil' : `${selectedUf}${selectedMunicipio ? ` · ${selectedMunicipio}` : ''}`}</p>
               </div>
               <button
                 type="button"
@@ -465,42 +465,41 @@ function RankingContent() {
                 href={`/candidato/${cand.id}`}
                 key={cand.id}
                 id={`ranking-${cand.id}`}
-                className={`group flex items-center gap-4 rounded-[28px] border p-4 transition ${
+                className={`group grid grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-3 gap-y-3 rounded-[24px] border p-4 transition sm:grid-cols-[4rem_minmax(0,1fr)_auto] sm:gap-x-4 sm:gap-y-1 sm:rounded-[28px] ${
                   cand.id === activeHighlightId
                     ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-400/40'
                     : 'border-white/10 bg-slate-900/80 hover:border-slate-500 hover:bg-slate-800'
                 }`}
               >
-                <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-700 bg-slate-950">
-                  <CandidateImage candidato={cand} alt={cand.nome_completo} className="h-full w-full object-cover rounded-3xl" />
+                <div className="h-12 w-12 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 sm:row-span-2 sm:h-16 sm:w-16 sm:rounded-3xl">
+                  <CandidateImage candidato={cand} alt={cand.nome_completo} className="h-full w-full object-cover" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-bold text-white">{cand.nome_completo}</p>
-                    <div className="flex items-center gap-2">
-                      {cand.id === activeHighlightId && (
-                        <span className="hidden rounded-full bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase text-slate-950 sm:inline">Destaque</span>
-                      )}
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{page * ITEMS_PER_PAGE + index + 1}º</span>
-                    </div>
+                <div className="min-w-0 sm:col-start-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-emerald-300">
+                      {page * ITEMS_PER_PAGE + index + 1}º
+                    </span>
+                    {cand.id === activeHighlightId && (
+                      <span className="rounded-full bg-emerald-400 px-2 py-1 text-[10px] font-black uppercase text-slate-950">Destaque</span>
+                    )}
                   </div>
-
-                  {/* Exibição: Ano Eleição · Cargo · Partido e Badge do Número */}
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+                  <p className="mt-1 break-words text-sm font-bold leading-snug text-white">{cand.nome_completo}</p>
+                </div>
+                <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-2">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed text-slate-400 sm:text-sm">
                     <span className="font-semibold text-emerald-400">{cand.ultima_candidatura?.ano_eleicao}</span>
-                    <span>· {cand.cargo} · {cand.partido}</span>
+                    <span className="min-w-0 break-words">{[cand.cargo, cand.partido].filter(Boolean).join(' · ')}</span>
                     {eValido((cand as any).nr_candidato) && (
-                      <span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
+                      <span className="max-w-full break-words rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-xs font-bold text-amber-300">
                         Nº {(cand as any).nr_candidato}
                       </span>
                     )}
                   </div>
-
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{cand.municipio} · {cand.uf}</p>
+                  <p className="mt-2 break-words text-xs uppercase leading-relaxed tracking-wide text-slate-400">{[cand.municipio, cand.uf].filter(Boolean).join(' · ')}</p>
                 </div>
-                <div className="rounded-3xl bg-slate-950 px-4 py-2 text-right">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Elo</p>
-                  <p className="text-lg font-black text-white">{cand.elo_score}</p>
+                <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 border-t border-white/10 pt-3 sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:row-span-2 sm:flex-col sm:self-center sm:gap-0 sm:rounded-3xl sm:border-0 sm:bg-slate-950 sm:px-4 sm:py-2">
+                  <p className="text-xs uppercase tracking-wider text-slate-400">Elo</p>
+                  <p className="break-words text-lg font-black tabular-nums text-white">{cand.elo_score}</p>
                 </div>
               </Link>
             ))
@@ -511,19 +510,19 @@ function RankingContent() {
           )}
         </section>
 
-        <div className="mt-6 flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
+        <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-3xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
           <button
             disabled={page === 0}
             onClick={() => handlePageChange(Math.max(page - 1, 0))}
-            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 min-w-0 rounded-2xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs font-semibold transition sm:px-4 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Anterior
           </button>
-          <span className="font-bold text-white">Página {page + 1}</span>
+          <span className="text-center text-xs font-bold text-white sm:text-sm">Página {page + 1}</span>
           <button
             disabled={!hasMore || ranking.length < ITEMS_PER_PAGE}
             onClick={() => handlePageChange(page + 1)}
-            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 min-w-0 rounded-2xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs font-semibold transition sm:px-4 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Próxima
           </button>

@@ -1,25 +1,12 @@
 'use client';
 
-/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useState, useCallback } from 'react';
 import CandidateImage from '@/components/ui/CandidateImage';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import type { Candidato } from '@/types';
-import { fetchJsonSafely } from '@/lib/robustJson';
 import { buildMunicipioOptions, buildStateOptions, STATE_CAPITAIS } from '@/lib/municipioOptions';
-
-const CARGOS_POR_ESCOPO: { [key: string]: string[] } = {
-  nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
-  estadual: [
-    'DEPUTADO ESTADUAL',
-    'DEPUTADO FEDERAL',
-    'GOVERNADOR',
-    'VICE-GOVERNADOR',
-    'SENADOR',
-  ],
-  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
-};
 
 export default function Home() {
   const [par, setPar] = useState<[Candidato, Candidato] | null>(null);
@@ -56,94 +43,38 @@ export default function Home() {
     void loadMunicipios();
   }, [selectedUf]);
 
-  const getCargosPorEscopo = useCallback(() => {
-    if (selectedUf === 'BR') {
-      return CARGOS_POR_ESCOPO.nacional;
-    }
-    if (selectedMunicipio && selectedMunicipio.trim() !== '') {
-      return CARGOS_POR_ESCOPO.municipal;
-    }
-    return CARGOS_POR_ESCOPO.estadual;
-  }, [selectedUf, selectedMunicipio]);
-
   const pickRandomPair = (source: Candidato[]) => {
     if (source.length < 2) return null;
     const shuffled = [...source].sort(() => Math.random() - 0.5);
     return [shuffled[0], shuffled[1]] as [Candidato, Candidato];
   };
 
-  const fetchCandidates = useCallback(async () => {
-      setLoading(true);
-      try {
-        const r2Url = `https://fotos.centraleti.com.br/candidatos/${selectedUf.toUpperCase()}.json`;
-        const todosCandidatosR2 = await fetchJsonSafely<Candidato[]>(r2Url);
-
-        if (!todosCandidatosR2 || !Array.isArray(todosCandidatosR2)) {
-          setCandidates([]);
-          setPar(null);
-          return;
-        }
-
-        const cargosPermitidos = getCargosPorEscopo().map(c => c.toUpperCase().trim());
-
-        // 1. Filtro estrito por escopo e por município
-        const filtrados = todosCandidatosR2.filter((c: Candidato) => {
-          const cargoCand = (c.cargo || '').toUpperCase().trim();
-          const condCargo = cargosPermitidos.includes(cargoCand);
-
-          if (!condCargo) return false;
-
-          if (selectedMunicipio) {
-            return (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim();
-          }
-
-          return true;
-        });
-
-        // 2. Normaliza os objetos montando a propriedade 'candidaturas' esperada pelo imageFallback.ts
-        const candidatosComFallback = filtrados.map((cand: any) => {
-          // Se já possui array de candidaturas/histórico usa ele, senão constrói a partir dos dados do objeto
-          const candidaturasExistentes = cand.candidaturas || cand.historico || [];
-
-          if (candidaturasExistentes.length > 0) {
-            return cand;
-          }
-
-          // Constrói a lista de fallback com todas as referências conhecidas da pessoa
-          const candidaturasGerdas = [
-            { foto: cand.foto, ano: cand.ano || cand.ano_eleicao, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2024, ano: 2024, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2022, ano: 2022, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2020, ano: 2020, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2018, ano: 2018, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2016, ano: 2016, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2012, ano: 2012, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2008, ano: 2008, uf: cand.uf || selectedUf },
-            { foto: cand.foto_2006, ano: 2006, uf: 'BR' }
-          ].filter(item => Boolean(item.foto));
-
-          return {
-            ...cand,
-            candidaturas: candidaturasGerdas.length > 0 ? candidaturasGerdas : [cand]
-          };
-        });
-
-        setCandidates(candidatosComFallback);
-        
-        const pair = pickRandomPair(candidatosComFallback);
-        setPar(pair);
-
-      } catch (error) {
-        console.error('Erro ao carregar candidatos do R2:', error);
-        setCandidates([]);
-        setPar(null);
-      } finally {
-        setLoading(false);
-      }
-    }, [selectedUf, selectedMunicipio, getCargosPorEscopo]);
+  const fetchCandidates = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setFeedback('');
+    try {
+      const query = new URLSearchParams({ uf: selectedUf });
+      if (selectedMunicipio) query.set('municipio', selectedMunicipio);
+      const response = await fetch(`/api/candidatos?${query}`, { signal });
+      if (!response.ok) throw new Error('Busca indisponível');
+      const data: Candidato[] = await response.json();
+      if (signal?.aborted) return;
+      setCandidates(data);
+      setPar(pickRandomPair(data));
+    } catch {
+      if (signal?.aborted) return;
+      setCandidates([]);
+      setPar(null);
+      setFeedback('Não foi possível carregar os candidatos. Tente novamente.');
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [selectedUf, selectedMunicipio]);
 
   useEffect(() => {
-    void fetchCandidates();
+    const controller = new AbortController();
+    void fetchCandidates(controller.signal);
+    return () => controller.abort();
   }, [fetchCandidates]);
 
   const escolher = async (escolhido: Candidato, outro: Candidato) => {

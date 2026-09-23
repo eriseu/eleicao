@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation'; // <-- Importe o redirect
+import { notFound } from 'next/navigation';
 import { getSocialCandidate as getCandidate } from '@/lib/socialCandidate';
 import { socialMetadata } from '@/lib/socialMetadata';
 
@@ -12,12 +12,7 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
   const { id } = await params;
   const candidate = await getCandidate(id);
 
-  if (!candidate) {
-    return {
-      title: 'Candidato não encontrado',
-      robots: { index: false, follow: true },
-    };
-  }
+  if (!candidate) notFound();
 
   const displayName = candidate.nome_completo || candidate.candidacy?.nome_urna || 'Perfil Político';
   const details = [
@@ -29,7 +24,7 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
 
   const title = `${displayName} — perfil político`;
   const description = `Conheça o perfil de ${displayName}${details ? `: ${details}` : ''}.`;
-  const canonical = `/candidato/${encodeURIComponent(id)}`;
+  const canonical = `/candidato/${encodeURIComponent(candidate.id)}`;
 
   return socialMetadata(title, description, canonical, `/api/og?${new URLSearchParams({ candidato: id })}`);
 }
@@ -38,9 +33,9 @@ export default async function CandidateLayout({ children, params }: CandidateLay
   const { id } = await params;
   const candidate = await getCandidate(id);
 
-  // SE NÃO EXISTIR CANDIDATO, REDIRECIONA IMEDIATAMENTE NO SERVIDOR
+  // Missing profiles return a real 404; upstream failures are allowed to surface.
   if (!candidate) {
-    redirect('/ranking');
+    notFound();
   }
 
   return <>{children}</>;

@@ -1,11 +1,9 @@
 'use client';
 
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/immutability */
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import type { Candidato } from '@/types';
-import { fetchJsonSafely } from '@/lib/robustJson';
-import { normalizeText } from '@/lib/municipioOptions';
 
 interface CandidateAutocompleteProps {
   label: string;
@@ -16,25 +14,6 @@ interface CandidateAutocompleteProps {
   excludeId?: string;
   disabled?: boolean;
 }
-
-const R2_URL = process.env.NEXT_PUBLIC_R2_URL || '';
-
-// Mapeamento de cargos permitidos por escopo
-const CARGOS_POR_ESCOPO = {
-  nacional: ['PRESIDENTE', 'VICE-PRESIDENTE'],
-  estadual: [
-    'DEPUTADO ESTADUAL',
-    'DEPUTADO FEDERAL',
-    'GOVERNADOR',
-    'VICE-GOVERNADOR',
-    'SENADOR',
-  ],
-  municipal: ['PREFEITO', 'VICE-PREFEITO', 'VEREADOR'],
-};
-
-// Cache local em memória para não baixar o JSON do R2 repetidas vezes na mesma sessão
-const cacheCandidatosUf: Record<string, any[]> = {};
-const cacheHistoricoPerfil: Record<string, any[]> = {};
 
 function candidateLabel(candidate: Candidato) {
   const name = candidate.nome_urna || candidate.nome_completo;
@@ -54,211 +33,42 @@ export default function CandidateAutocomplete({
   const [results, setResults] = useState<Candidato[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [candidatesVersion, setCandidatesVersion] = useState(0);
-
-  // Referência para guardar a lista bruta do estado atual
-  const candidatosUfRef = useRef<any[]>([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     setQuery(selected ? candidateLabel(selected) : '');
     setResults([]);
   }, [selected]);
 
-  // Carrega o JSON do R2 assim que a UF mudar
-  useEffect(() => {
-    let cancelled = false;
-    if (!uf) return;
-
-    async function carregarCacheR2() {
-      const ufKey = uf.toUpperCase();
-      if (cacheCandidatosUf[ufKey]) {
-        candidatosUfRef.current = cacheCandidatosUf[ufKey];
-        setCandidatesVersion((version) => version + 1);
-        return;
-      }
-
-      try {
-        const data = await fetchJsonSafely<any[]>(`${R2_URL}/candidatos/${ufKey}.json`);
-        if (!cancelled && Array.isArray(data)) {
-          cacheCandidatosUf[ufKey] = data;
-          candidatosUfRef.current = data;
-          setCandidatesVersion((version) => version + 1);
-        }
-      } catch (err) {
-        console.error('Erro ao carregar candidatos do R2:', err);
-      }
-    }
-
-    carregarCacheR2();
-    return () => {
-      cancelled = true;
-    };
-  }, [uf]);
-
-  // Retorna os cargos permitidos de acordo com o estado/município selecionados
-  const getCargosPermitidos = useCallback(() => {
-    if (uf === 'BR') {
-      return CARGOS_POR_ESCOPO.nacional;
-    }
-    // Se selecionou município => SOMENTE municipal
-    if (municipio && municipio.trim() !== '') {
-      return CARGOS_POR_ESCOPO.municipal;
-    }
-    // Se selecionou UF sem município => SOMENTE estadual
-    return CARGOS_POR_ESCOPO.estadual;
-  }, [uf, municipio]);
-
-  // Processo de busca local instantânea
   useEffect(() => {
     const term = query.trim();
     if (disabled || term.length < 2 || (selected && term === candidateLabel(selected))) {
       setResults([]);
       setLoading(false);
+      setError('');
       return;
     }
-
-    const timeout = window.setTimeout(() => {
-      setLoading(true);
-      const sanitizedTerm = term.replace(/[()[\]{}]/g, '').toLowerCase();
-
-      if (!sanitizedTerm || candidatosUfRef.current.length === 0) {
-        setResults([]);
-        setLoading(false);
-        return;
+    const controller = new AbortController();
+    setLoading(true);
+    setResults([]);
+    setError('');
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ uf, q: term });
+        if (municipio) params.set('municipio', municipio);
+        if (excludeId) params.set('exclude', excludeId);
+        const response = await fetch(`/api/candidatos?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Busca indisponível');
+        const data = await response.json();
+        if (!controller.signal.aborted) setResults(data);
+      } catch {
+        if (!controller.signal.aborted) setError('Não foi possível buscar. Tente novamente.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-
-      const termoBusca = normalizeText(sanitizedTerm);
-      const cargosPermitidos = getCargosPermitidos();
-      const municipioBusca = normalizeText(municipio);
-
-      const getMunicipioCandidate = (c: any): string => {
-        const values = [
-          c?.municipio,
-          c?.ultima_candidatura?.municipio,
-          c?.candidaturas?.map((item: any) => item?.municipio),
-        ].flat();
-
-        return values.find((value) => typeof value === 'string' && value.trim() !== '') || '';
-      };
-
-      // Filtra direto na lista em memória vinda do R2 usando a busca tolerante a acentos
-      const filtrarCandidatos = (lista: any[]) => lista.filter((c: any) => {
-        if (c.id === excludeId) return false;
-
-        const cargoCandidato = normalizeText(c.cargo || '');
-        const cargoValido = cargosPermitidos.some(
-          (cargo) => normalizeText(cargo) === cargoCandidato
-        );
-        if (!cargoValido) return false;
-
-        if (municipioBusca && normalizeText(getMunicipioCandidate(c)) !== municipioBusca) return false;
-
-        const matchCompleto = normalizeText(c.nome_completo || c.nome || '').includes(termoBusca);
-        const matchUrna = normalizeText(c.nome_urna || c.nome_candidato || '').includes(termoBusca);
-
-        return matchCompleto || matchUrna;
-      });
-
-      const filtrados = filtrarCandidatos(candidatosUfRef.current);
-
-      const concluirBusca = (lista: any[]) => {
-        const mapped: Candidato[] = filtratesMap(lista);
-
-        setResults(mapped.slice(0, 20));
-        setLoading(false);
-        setOpen(true);
-      };
-
-      const candidatosComNome = candidatosUfRef.current.filter((c: any) => {
-        const nomes = [c.nome_completo, c.nome, c.nome_urna, c.nome_candidato]
-          .filter(Boolean)
-          .map((nome) => normalizeText(nome));
-
-        return nomes.some((nome) => nome.includes(termoBusca));
-      });
-
-      if (municipioBusca && candidatosComNome.length > 0) {
-        const candidatosLocais = filtrados;
-        concluirBusca(candidatosLocais);
-
-        void Promise.all(candidatosComNome.slice(0, 50).map(async (candidate: any) => {
-          const profileId = candidate.id || candidate.perfil_id;
-          if (!profileId) return [];
-
-          if (!cacheHistoricoPerfil[profileId]) {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidaturas/${encodeURIComponent(profileId)}`);
-            const payload = response.ok ? await response.json() : null;
-            cacheHistoricoPerfil[profileId] = Array.isArray(payload?.candidaturas) ? payload.candidaturas : [];
-          }
-
-          return cacheHistoricoPerfil[profileId].map((history: any) => ({
-            ...candidate,
-            ...history,
-            id: profileId,
-            perfil_id: profileId,
-            nome_completo: candidate.nome_completo || candidate.nome || history.nome_urna,
-          }));
-        })).then((histories) => {
-          const historicoFiltrado = filtrarCandidatos(histories.flat());
-          if (historicoFiltrado.length > 0) {
-            concluirBusca([...candidatosLocais, ...historicoFiltrado]);
-          }
-        }).catch((error) => {
-          console.error('Erro ao carregar histórico do candidato:', error);
-        });
-        return;
-      }
-
-      if (filtrados.length > 0) {
-        concluirBusca(filtrados);
-        return;
-      }
-
-      void fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidatos-completos?uf=${encodeURIComponent(uf.toUpperCase())}`)
-        .then((response) => response.ok ? response.json() : [])
-        .then((data) => {
-          const completos = Array.isArray(data) ? data : [];
-          concluirBusca(filtrarCandidatos(completos));
-        })
-        .catch((error) => {
-          console.error('Erro ao carregar candidatos completos:', error);
-          concluirBusca([]);
-        });
-    }, 200);
-
-    return () => window.clearTimeout(timeout);
-  }, [query, municipio, excludeId, selected, disabled, uf, getCargosPermitidos, candidatesVersion]);
-
-  function filtratesMap(lista: any[]): Candidato[] {
-    const mapUnicos = new Map();
-
-    lista.forEach((c: any) => {
-      if (!mapUnicos.has(c.id)) {
-        mapUnicos.set(c.id, {
-          id: c.id,
-          nome_completo: c.nome_completo,
-          nome_urna: c.nome_urna || c.nome_completo,
-          partido: c.partido || 'S/P',
-          cargo: c.cargo,
-          ano_eleicao: c.ano_eleicao,
-          uf: c.uf,
-          municipio: c.municipio,
-          foto: c.foto || c.sq_candidato,
-          elo_score: 1200,
-          matches_count: 0,
-          ultima_candidatura: {
-            ...c,
-            perfil_id: c.id,
-            sq_candidato: Number(c.sq_candidato) || 0,
-          },
-        });
-      }
-    });
-
-    return Array.from(mapUnicos.values()).sort((a, b) =>
-      candidateLabel(a).localeCompare(candidateLabel(b), 'pt-BR')
-    );
-  }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [query, uf, municipio, excludeId, selected, disabled]);
 
   return (
     <label className="relative block">
@@ -281,6 +91,8 @@ export default function CandidateAutocomplete({
         <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-2 shadow-2xl">
           {loading ? (
             <p className="px-3 py-2 text-sm text-slate-400">Buscando...</p>
+          ) : error ? (
+            <p role="alert" className="px-3 py-2 text-sm text-amber-300">{error}</p>
           ) : results.length > 0 ? (
             results.map((candidate) => (
               <button

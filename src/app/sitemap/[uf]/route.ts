@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSitemapPageCountForUf, xmlEscape } from '@/lib/sitemap';
 import { getSiteUrl } from '@/lib/seo';
+import { AVAILABLE_UFS } from '@/constants/elections';
 
 export async function GET(
   request: NextRequest,
@@ -9,6 +10,7 @@ export async function GET(
   const resolvedParams = await params;
   const rawParam = resolvedParams.uf || '';
   const ufClean = rawParam.replace(/\.xml$/i, '').toUpperCase();
+  if (!(AVAILABLE_UFS as readonly string[]).includes(ufClean)) return new NextResponse('UF inválida.', { status: 404 });
   const siteUrl = getSiteUrl();
 
   try {

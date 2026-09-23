@@ -14,6 +14,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(siteUrl),
     title: siteTitle,
+    alternates: { canonical: siteUrl },
     description: siteDescription,
     keywords: ['eleições', 'política', 'duelo', 'comparação', 'candidatos', 'ranking'],
     authors: [{ name: 'Central IT', url: 'https://centraleti.com.br' }],

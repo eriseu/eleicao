@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSitemapCandidatePage, xmlEscape } from '@/lib/sitemap';
 import { getSiteUrl } from '@/lib/seo';
+import { AVAILABLE_UFS } from '@/constants/elections';
 
 export const revalidate = 86400;
 
@@ -15,10 +16,11 @@ export async function GET(
   const pageRaw = resolvedParams.page || '1';
   const pageNum = parseInt(pageRaw.replace(/\.xml$/i, ''), 10);
 
-  if (isNaN(pageNum) || pageNum < 1) {
+  if (!/^[1-9]\d*(?:\.xml)?$/.test(pageRaw) || !Number.isSafeInteger(pageNum) || pageNum < 1) {
     return new NextResponse('Página inválida.', { status: 400 });
   }
 
+  if (!(AVAILABLE_UFS as readonly string[]).includes(ufClean)) return new NextResponse('UF inválida.', { status: 404 });
   const siteUrl = getSiteUrl();
 
   try {

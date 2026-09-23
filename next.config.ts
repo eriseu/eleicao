@@ -13,6 +13,9 @@ const cspHeader = `
 `;
 
 const nextConfig: NextConfig = {
+  // Resolve profile existence before sending headers, including to JS-capable crawlers.
+  // This prevents a streamed 200 response for a missing profile.
+  htmlLimitedBots: /.*/,
   async rewrites() {
     return [
       {

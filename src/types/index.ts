@@ -7,18 +7,18 @@ export interface Candidatura {
   uf: string;
   municipio: string;
   ano_eleicao: number;
-  created_at: string;
+  created_at?: string;
   foto?: string | null; // Caso você guarde o nome do arquivo ou caminho
 }
 
 export interface Candidato {
   id: string; // uuid
-  cpf: string;
-  titulo_eleitoral: string;
+  cpf?: string;
+  titulo_eleitoral?: string;
   nome_completo: string;
   elo_score: number;
   matches_count: number;
-  created_at: string;
+  created_at?: string;
   nome_urna?: string;
   partido?: string;
   cargo?: string;

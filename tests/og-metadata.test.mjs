@@ -15,12 +15,15 @@ const mocks = {
   '@/lib/supabaseClient': `export const supabase = { from() { return { select() { return this }, eq() { return this }, async in(column, ids) { return {data: ids.map(id => ({id, nome_completo: id}))} }, async maybeSingle() { return {data: {id: 'test-id', nome_completo: 'Candidato Teste'}} } } } };`,
   '@/lib/vpsClient': `export async function fetchCandidaturasFromVPS() { return [{perfil_id: 'test-id', nome_urna: 'Teste', ano_eleicao: 2024, uf: 'MT', municipio: 'Cuiabá'}] }`,
   '@/components/layout/BottomNav': empty,
+  '@/lib/profileData': `export async function getProfileData(id) { return {candidato: {id, nome_completo: 'Candidato Teste'}, historico: [{perfil_id: id, nome_urna: 'Teste', ano_eleicao: 2024, uf: 'MT', municipio: 'Cuiabá'}]}; }`,
+  '@/lib/rankingData': `export async function getRankingData() { return {ranking: [], page: 1, hasMore: false} }`,
   'next/script': empty,
   'next/navigation': `export function redirect(url) { throw new Error(url) } export function notFound() { throw new Error('404') }`,
 };
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === './supabaseClient') specifier = '@/lib/supabaseClient';
+    if (specifier === './profileData') specifier = '@/lib/profileData';
     if (specifier === './vpsClient') specifier = '@/lib/vpsClient';
     if (mocks[specifier] || specifier.endsWith('Client') || specifier.endsWith('.css')) {
       return { url: 'data:text/javascript,' + encodeURIComponent(mocks[specifier] || empty), shortCircuit: true };
@@ -94,4 +97,12 @@ test('link curto de duelo usa a rota OG com os dois candidatos', async () => {
   assert.equal(url.pathname, '/api/og');
   assert.equal(url.searchParams.get('c1'), 'one');
   assert.equal(url.searchParams.get('c2'), 'two');
+});
+
+test('ranking consolidates highlight and tracking variants on the paginated canonical', async () => {
+  const meta = await ranking({ searchParams: Promise.resolve({ uf: 'MT', page: '2', highlight: 'test-id', utm_source: 'share' }) });
+  const url = new URL(meta.alternates.canonical);
+  assert.equal(url.searchParams.get('page'), '2');
+  assert.equal(url.searchParams.has('highlight'), false);
+  assert.equal(url.searchParams.has('utm_source'), false);
 });

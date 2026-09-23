@@ -1,42 +1,32 @@
-import { useState, useEffect } from 'react';
+'use client';
+
+import { useState } from 'react';
 import { getPhotoUrls } from '@/utils/imageFallback';
 
 interface CandidateImageProps {
-  candidato: any;
+  candidato: unknown;
   alt?: string;
   className?: string;
   priority?: boolean;
 }
 
 export default function CandidateImage({ candidato, alt, className, priority = false }: CandidateImageProps) {
-  const [urls, setUrls] = useState<string[]>([]);
+  const urls = getPhotoUrls(candidato);
+  const sourceKey = urls.join('|');
+  return <ResolvedImage key={sourceKey} urls={urls} alt={alt} className={className} priority={priority} />;
+}
+
+function ResolvedImage({ urls, alt, className, priority }: { urls: string[]; alt?: string; className?: string; priority: boolean }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-
-  useEffect(() => {
-    if (!candidato) return;
-    const listaUrls = getPhotoUrls(candidato);
-    setUrls(listaUrls);
-    setCurrentIndex(0);
-  }, [candidato]);
-
   const handleError = () => {
-    const urlComErro = urls[currentIndex];
-
-    if (urlComErro && urlComErro !== '/avatar.png') {
-      console.warn(`🚨 [404 Foto Candidato] Falha ao carregar: ${urlComErro}`, {
-        candidatoId: candidato?.id,
-        nome: candidato?.nome || candidato?.nome_urna,
-        urlComErro,
-        proximaTentativa: urls[currentIndex + 1] || '/avatar.png'
-      });
-    }
-
     if (currentIndex < urls.length - 1) {
       setCurrentIndex((prev) => prev + 1);
     }
   };
 
   return (
+    // Candidate files have multiple historical fallbacks on an external image service.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={urls[currentIndex] || '/avatar.png'}
       alt={alt || "Foto do candidato"}

@@ -1,20 +1,17 @@
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // <-- Importado para redirecionamento no Client Component
-import { supabase } from '@/lib/supabaseClient';
+import { notFound, permanentRedirect } from 'next/navigation';
+import { getProfileData } from '@/lib/profileData';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
 
-function eValido(valor: any): boolean {
+function eValido(valor: unknown): boolean {
   if (valor === null || valor === undefined) return false;
   const str = String(valor).trim().toUpperCase();
   return str !== '' && str !== '#NULO' && str !== '#NULO#' && str !== 'NULO' && str !== '#NE#';
 }
 
-function calcularIdade(dataNascimento: string | null): number | null {
+function calcularIdade(dataNascimento: string | null | undefined): number | null {
   if (!eValido(dataNascimento)) return null;
   const nascimento = new Date(dataNascimento!);
   if (isNaN(nascimento.getTime())) return null;
@@ -29,7 +26,7 @@ function calcularIdade(dataNascimento: string | null): number | null {
   return idade;
 }
 
-function formatarGenero(genero: string | null): string | null {
+function formatarGenero(genero: string | null | undefined): string | null {
   if (!eValido(genero)) return null;
   const g = String(genero).trim().toUpperCase();
   if (g === 'M' || g === '2') return 'Masculino';
@@ -37,98 +34,14 @@ function formatarGenero(genero: string | null): string | null {
   return String(genero);
 }
 
-export default function Perfil({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = React.use(params);
-  const router = useRouter(); // <-- Hook de navegação
-
-  const [candidato, setCandidato] = useState<any | null>(null);
-  const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingStats, setLoadingStats] = useState(true);
-
-  useEffect(() => {
-    async function loadPerfilCompleto() {
-      if (!resolvedParams.id) return;
-
-      try {
-        setLoading(true);
-        // 1. Consulta dados no Postgres via VPS
-        const res = await fetch(`/api/candidato/${resolvedParams.id}`);
-        
-        // SE NÃO ENCONTRAR NA API (status 404 ou !res.ok) -> REDIRECIONA DIRETO PARA /ranking
-        if (!res.ok) {
-          router.replace('/ranking');
-          return;
-        }
-
-        const data = await res.json();
-        const candData = data.candidato || {};
-        const historico = data.historico || [];
-
-        // Se a API retornar sucesso mas o objeto candidato vier vazio
-        if (!candData || Object.keys(candData).length === 0) {
-          router.replace('/ranking');
-          return;
-        }
-
-        setHistoricoCandidaturas(historico);
-
-        const candidatoBase = {
-          ...candData,
-          candidaturas: historico,
-          elo_score: candData.elo_score ?? 1200,
-          matches_count: candData.matches_count ?? 0,
-        };
-
-        setCandidato(candidatoBase);
-        setLoading(false);
-
-        // 2. Consulta dados no Supabase
-        setLoadingStats(true);
-        const perfilIdParaConsulta = candData.perfil_id || candData.id || resolvedParams.id;
-
-        const { data: perfilSupabase, error } = await supabase
-          .from('perfis_candidatos')
-          .select('nome_completo, elo_score, matches_count, genero, cor_raca, data_nascimento, nome_social')
-          .eq('id', perfilIdParaConsulta)
-          .maybeSingle();
-
-        if (error) {
-          console.error('Erro ao consultar Supabase:', error);
-        } else if (perfilSupabase) {
-          setCandidato((prev: any) =>
-            prev
-              ? {
-                  ...prev,
-                  nome_completo: perfilSupabase.nome_completo || prev.nome_completo,
-                  elo_score: perfilSupabase.elo_score ?? prev.elo_score ?? 1200,
-                  matches_count: perfilSupabase.matches_count ?? prev.matches_count ?? 0,
-                  genero: perfilSupabase.genero ?? prev.genero,
-                  cor_raca: perfilSupabase.cor_raca ?? prev.cor_raca,
-                  data_nascimento: perfilSupabase.data_nascimento ?? prev.data_nascimento,
-                  nome_social: perfilSupabase.nome_social ?? prev.nome_social,
-                }
-              : null
-          );
-        }
-      } catch (err) {
-        console.error('Erro ao carregar perfil:', err);
-        // Em caso de erro grave na busca, redireciona para o ranking
-        router.replace('/ranking');
-      } finally {
-        setLoading(false);
-        setLoadingStats(false);
-      }
-    }
-
-    loadPerfilCompleto();
-  }, [resolvedParams.id, router]);
-
-  if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
-  if (!candidato) return null; // Evita piscar a tela zerada enquanto faz o redirecionamento
-
+export default async function Perfil({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const data = await getProfileData(id);
+  if (!data) notFound();
+  if (id !== data.candidato.id) permanentRedirect(`/candidato/${data.candidato.id}`);
+  const { candidato, historico: historicoCandidaturas } = data;
   const candAtual = historicoCandidaturas[0] || candidato;
-  const anoReferencia = candAtual?.ano_eleicao || candidato?.ano_eleicao || '2026';
+  const anoReferencia = candAtual?.ano_eleicao || candidato?.ano_eleicao || 'Não informado';
   const idade = calcularIdade(candidato.data_nascimento);
   const nrCandidatoAtual = candAtual.nr_candidato || candidato.nr_candidato;
 
@@ -137,13 +50,14 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
     : candidato.nome_urna;
 
   return (
-    <main className="max-w-md mx-auto px-4 py-6 text-slate-100">
+    <main className="max-w-md mx-auto px-4 pt-6 pb-28 text-slate-100">
       <div className="bg-slate-900 rounded-3xl border border-white/10 shadow-xl p-5 flex flex-col items-center">
         
         <div className="relative">
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-slate-700 bg-slate-950 shadow-lg">
             <CandidateImage 
-              candidato={candidato} 
+              candidato={candidato}
+              priority
               alt={nomeExibicao || 'Foto do Candidato'} 
               className="w-full h-full object-cover" 
             />
@@ -175,13 +89,13 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         <div className="grid grid-cols-2 gap-3 w-full mt-5 bg-slate-950/50 border border-white/5 p-3 rounded-2xl">
           <div className="text-center border-r border-white/10 pr-2">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ELO</span>
-            <span className={`text-xl font-black text-emerald-400 transition-opacity duration-300 ${loadingStats ? 'opacity-40 animate-pulse' : 'opacity-100'}`}>
+            <span className={`text-xl font-black text-emerald-400 transition-opacity duration-300 `}>
               {candidato.elo_score ?? 1200}
             </span>
           </div>
           <div className="text-center pl-2">
             <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Disputas</span>
-            <span className={`text-xl font-black text-slate-200 transition-opacity duration-300 ${loadingStats ? 'opacity-40 animate-pulse' : 'opacity-100'}`}>
+            <span className={`text-xl font-black text-slate-200 transition-opacity duration-300 `}>
               {candidato.matches_count ?? 0}
             </span>
           </div>
@@ -249,13 +163,13 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
           {historicoCandidaturas.length > 0 ? (
             <div className="space-y-2.5">
-              {historicoCandidaturas.map((cand: any, index: number) => (
+              {historicoCandidaturas.map((cand, index) => (
                 <div key={index} className="bg-slate-950/60 border border-white/5 rounded-2xl p-3 flex items-center gap-3 text-xs">
                   
                   <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-700 bg-slate-900 flex-shrink-0">
                     <CandidateImage 
                       candidato={{ ...cand, candidaturas: historicoCandidaturas }} 
-                      alt={cand.nome_urna || cand.nome_completo || 'Foto do Candidato'} 
+                      alt={cand.nome_urna || candidato.nome_completo || 'Foto do Candidato'} 
                       className="w-full h-full object-cover" 
                     />
                   </div>

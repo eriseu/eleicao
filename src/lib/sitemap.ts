@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { gunzipSync } from 'node:zlib';
 import { AVAILABLE_UFS } from '@/constants/elections';
@@ -47,7 +48,7 @@ function normalizeCandidateIds(items: unknown[]): string[] {
     })
     .filter((id): id is string => Boolean(id));
 
-  return Array.from(new Set(ids));
+  return Array.from(new Set(ids.filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)).map(id => id.toLowerCase())));
 }
 
 export async function getCandidateIdsForUf(uf: string): Promise<string[]> {
@@ -113,3 +114,16 @@ export async function getSitemapCandidatePage(page: number, uf?: string) {
   const end = start + SITEMAP_PAGE_SIZE;
   return allIds.slice(start, end);
 }
+
+// This app has not enabled Cache Components. Cache only the small manifest,
+// not the multi-megabyte state datasets, using the supported compatibility API.
+export const getSitemapManifest = unstable_cache(async () => {
+  const entries: { uf: string; pages: number }[] = [];
+  for (let start = 0; start < AVAILABLE_UFS.length; start += 4) {
+    const batch = await Promise.all(AVAILABLE_UFS.slice(start, start + 4).map(async uf => ({
+      uf: uf.toLowerCase(), pages: await getSitemapPageCountForUf(uf),
+    })));
+    entries.push(...batch);
+  }
+  return entries;
+}, ['sitemap-manifest-v2'], { revalidate: 86400 });

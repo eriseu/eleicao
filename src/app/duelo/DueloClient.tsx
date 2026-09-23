@@ -287,12 +287,15 @@ export default function DueloClient() {
     setC2(shuffled[1]);
   }, [filteredCandidates]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (signal?: AbortSignal) => {
     setLoadingCandidates(true);
     try {
       if (isSharedDuel) {
-        const perfisData = await fetchPerfisEmLotes([sharedC1Id!, sharedC2Id!]);
-        const candidaturas = (await fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!])) || [];
+        const [perfisData, candidaturas] = await Promise.all([
+          fetchPerfisEmLotes([sharedC1Id!, sharedC2Id!]),
+          fetchCandidaturasFromVPS([sharedC1Id!, sharedC2Id!]),
+        ]);
+        if (signal?.aborted) return;
         const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
         
         setCandidates(mappedDataFinal);
@@ -306,83 +309,32 @@ export default function DueloClient() {
         return;
       }
 
-      const cargos = getCargosPorEscopo();
-      const queryParams = new URLSearchParams();
-      queryParams.append('uf', selectedUf);
-      cargos.forEach(cargo => queryParams.append('cargos', cargo));
-      if (selectedMunicipio) {
-        queryParams.append('municipio', selectedMunicipio);
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
-      if (!response.ok) {
-        setCandidates([]);
-        setC1(null);
-        setC2(null);
-        setLoadingCandidates(false);
-        return;
-      }
-
-      const dataVps = await response.json();
-      if (!dataVps || dataVps.length === 0) {
-        setCandidates([]);
-        setC1(null);
-        setC2(null);
-        setLoadingCandidates(false);
-        return;
-      }
-
-      if (typeof dataVps[0] === 'object' && dataVps[0] !== null && dataVps[0].id) {
-        const perfilIds = dataVps.map((p: any) => p.id);
-        const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
-        const mappedDataFinal = processCandidaturas(dataVps, candidaturas as any[]);
-        setCandidates(mappedDataFinal);
-
-        if (mappedDataFinal.length >= 2) {
-          const shuffled = [...mappedDataFinal].sort(() => Math.random() - 0.5);
-          setC1(shuffled[0]);
-          setC2(shuffled[1]);
-        } else {
-          setC1(mappedDataFinal[0] || null);
-          setC2(mappedDataFinal[1] || null);
-        }
-        setLoadingCandidates(false);
-        return;
-      }
-
-      const perfilIdsVps: string[] = dataVps.map((item: any) => typeof item === 'string' ? item : item.id);
-      const idsEmbaralhados = [...perfilIdsVps].sort(() => Math.random() - 0.5);
-      const idsAmostra = idsEmbaralhados.slice(0, 30);
-
-      const perfisData = await fetchPerfisEmLotes(idsAmostra);
-      const perfilIds = perfisData.map((p: any) => p.id);
-      const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
-
-      const mappedDataFinal = processCandidaturas(perfisData, candidaturas as any[]);
-      setCandidates(mappedDataFinal);
-
-      if (mappedDataFinal.length >= 2) {
-        const shuffled = [...mappedDataFinal].sort(() => Math.random() - 0.5);
-        setC1(shuffled[0]);
-        setC2(shuffled[1]);
-      } else {
-        setC1(mappedDataFinal[0] || null);
-        setC2(mappedDataFinal[1] || null);
-      }
+      const query = new URLSearchParams({ uf: selectedUf });
+      if (selectedMunicipio) query.set('municipio', selectedMunicipio);
+      const response = await fetch(`/api/candidatos?${query}`, { signal });
+      if (!response.ok) throw new Error('Busca indisponível');
+      const sample: Candidato[] = await response.json();
+      if (signal?.aborted) return;
+      setCandidates(sample);
+      setC1(sample[0] || null);
+      setC2(sample[1] || null);
     } catch (error) {
+      if (signal?.aborted) return;
+      setFeedback('Não foi possível carregar os candidatos. Tente novamente.');
       console.error('Erro ao buscar candidatos para o duelo:', error);
       setCandidates([]);
       setC1(null);
       setC2(null);
     } finally {
-      setLoadingCandidates(false);
+      if (!signal?.aborted) setLoadingCandidates(false);
     }
-  }, [isSharedDuel, selectedUf, selectedMunicipio, getCargosPorEscopo, hasValidSharedUf, sharedC1Id, sharedC2Id, processCandidaturas]);
+  }, [isSharedDuel, selectedUf, selectedMunicipio, hasValidSharedUf, sharedC1Id, sharedC2Id, processCandidaturas]);
 
   useEffect(() => {
-    if (isMounted) {
-      void loadData();
-    }
+    if (!isMounted) return;
+    const controller = new AbortController();
+    void loadData(controller.signal);
+    return () => controller.abort();
   }, [isMounted, loadData]);
 
   const displayedCandidates = useMemo(() => {

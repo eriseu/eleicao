@@ -12,6 +12,8 @@ const cspHeader = `
   base-uri 'self';
 `;
 
+const vpsApiUrl = (process.env.NEXT_PUBLIC_VPS_API_URL || "https://api.centraleti.com.br").replace(/\/+$/, "");
+
 const nextConfig: NextConfig = {
   output: "standalone",
   htmlLimitedBots: /.*/,
@@ -19,7 +21,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/vps/:path*",
-        destination: "https://api.centraleti.com.br/api/:path*",
+        destination: `${vpsApiUrl}/api/:path*`,
       },
     ];
   },

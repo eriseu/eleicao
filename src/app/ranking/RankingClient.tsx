@@ -7,6 +7,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import { buildMunicipioOptions, getStateNameFromUf } from '@/lib/municipioOptions';
 import { rankingUrl } from '@/lib/candidateFilters';
+import { VPS_API_PROXY } from '@/lib/vpsClient';
 import type { RankingData } from '@/lib/rankingData';
 
 export default function RankingClient({ data, uf, municipio, highlight }: {
@@ -18,7 +19,7 @@ export default function RankingClient({ data, uf, municipio, highlight }: {
   useEffect(() => {
     if (uf === 'BR') return;
     const controller = new AbortController();
-    fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/municipios?uf=${uf}`, { signal: controller.signal })
+    fetch(`${VPS_API_PROXY}/municipios?${new URLSearchParams({ uf })}`, { signal: controller.signal })
       .then(response => { if (!response.ok) throw new Error('Municípios indisponíveis'); return response.json(); })
       .then(items => { if (!controller.signal.aborted) setMunicipios(buildMunicipioOptions(items, uf)); })
       .catch(() => { if (!controller.signal.aborted) setFeedback('Não foi possível carregar os municípios.'); });

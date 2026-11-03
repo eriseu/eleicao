@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
+import { fetchCandidaturasFromVPS, VPS_API_PROXY } from '@/lib/vpsClient';
 import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import CandidateAutocomplete from '@/components/ui/CandidateAutocomplete';
@@ -106,7 +106,7 @@ export default function DueloClient() {
 
     async function loadMunicipios() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
+        const response = await fetch(`${VPS_API_PROXY}/municipios?${new URLSearchParams({ uf: selectedUf })}`);
         if (!response.ok) {
           setMunicipios([]);
           return;
@@ -224,7 +224,8 @@ export default function DueloClient() {
     const results = await Promise.all(
       chunks.map(async (chunk) => {
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${chunk.join(',')}`);
+          const query = new URLSearchParams({ ids: chunk.join(',') });
+          const res = await fetch(`${VPS_API_PROXY}/perfis?${query}`);
           if (!res.ok) return [];
           return await res.json();
         } catch {

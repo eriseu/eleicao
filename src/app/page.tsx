@@ -7,6 +7,7 @@ import CandidateImage from '@/components/ui/CandidateImage';
 import { AVAILABLE_UFS } from '@/constants/elections';
 import type { Candidato } from '@/types';
 import { buildMunicipioOptions, buildStateOptions, STATE_CAPITAIS } from '@/lib/municipioOptions';
+import { VPS_API_PROXY } from '@/lib/vpsClient';
 
 export default function Home() {
   const [par, setPar] = useState<[Candidato, Candidato] | null>(null);
@@ -26,7 +27,7 @@ export default function Home() {
 
     async function loadMunicipios() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
+        const response = await fetch(`${VPS_API_PROXY}/municipios?${new URLSearchParams({ uf: selectedUf })}`);
         if (!response.ok) {
           setMunicipios([]);
           return;

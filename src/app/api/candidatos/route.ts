@@ -1,18 +1,35 @@
 import { NextResponse } from 'next/server';
 import { normalizeUf } from '@/lib/candidateFilters';
-import { searchCandidates } from '@/lib/candidateSearch';
 
 export const runtime = 'nodejs';
+
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
-  const uf = normalizeUf(params.get('uf'));
-  const municipio = uf === 'BR' ? '' : (params.get('municipio') || '').trim().slice(0, 100);
-  const query = (params.get('q') || '').trim().slice(0, 100);
-  if (query && query.length < 2) return NextResponse.json([]);
+  const uf = normalizeUf(params.get('uf')) || 'BR';
+  const municipio = (params.get('municipio') || '').trim();
+
   try {
-    const data = await searchCandidates(uf, municipio, query, (params.get('exclude') || '').slice(0, 36));
-    return NextResponse.json(data, { headers: { 'Cache-Control': query ? 'public, s-maxage=300, stale-while-revalidate=600' : 'no-store' } });
-  } catch {
-    return NextResponse.json({ error: 'Busca temporariamente indisponível. Tente novamente.' }, { status: 503 });
+    const baseUrl = process.env.NEXT_PUBLIC_R2_URL || 'https://fotos.centraleti.com.br';
+    const filename = municipio ? `${uf}_${municipio}.json` : `${uf}.json`;
+    
+    const res = await fetch(`${baseUrl}/candidatos/${filename}`, {
+      next: { revalidate: 3600 }
+    });
+
+    if (!res.ok) {
+      // Tenta carregar o BR.json padrão se a cidade/UF específica não for encontrada
+      const brRes = await fetch(`${baseUrl}/candidatos/BR.json`);
+      if (brRes.ok) {
+        const brData = await brRes.json();
+        return NextResponse.json(brData);
+      }
+      return NextResponse.json([]);
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Erro na rota api/candidatos:', error);
+    return NextResponse.json([], { status: 200 });
   }
 }

@@ -19,13 +19,19 @@ export async function generateMetadata({ searchParams }: RankingPageProps): Prom
   const scope = [municipio, getStateNameFromUf(uf)].filter(Boolean).join(' · ');
   let title = `Ranking de candidatos — ${scope}`;
   const highlight = firstValue(query.highlight);
+  
   if (highlight) {
-    const { data } = await supabase.from('perfis_candidatos').select('nome_completo').eq('id', highlight).maybeSingle();
-    if (data) {
-      title = `${data.nome_completo} no ranking de ${scope}`;
-      params.set('highlight', highlight);
+    try {
+      const { data } = await supabase.from('perfis_candidatos').select('nome_completo').eq('id', highlight).maybeSingle();
+      if (data) {
+        title = `${data.nome_completo} no ranking de ${scope}`;
+        params.set('highlight', highlight);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar metadados do candidato em destaque:', err);
     }
   }
+
   const imageParams = new URLSearchParams({ tipo: 'ranking', uf });
   if (municipio) imageParams.set('municipio', municipio);
   return socialMetadata(title, `Acompanhe os candidatos mais bem posicionados no ranking político de ${scope}.`, `/ranking?${params}`, `/api/og?${imageParams}`);

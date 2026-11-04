@@ -28,7 +28,7 @@ export async function generateMetadata({ searchParams }: RankingPageProps): Prom
         params.set('highlight', highlight);
       }
     } catch (err) {
-      console.error('Erro ao buscar metadados do candidato em destaque:', err);
+      console.error('Aviso: Não foi possível carregar o destaque do ranking para os metadados:', err);
     }
   }
 

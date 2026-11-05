@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation'; // <-- Importe o redirect
 import { getSocialCandidate as getCandidate } from '@/lib/socialCandidate';
 import { socialMetadata } from '@/lib/socialMetadata';
 
@@ -36,11 +35,12 @@ export async function generateMetadata({ params }: CandidateLayoutProps): Promis
 
 export default async function CandidateLayout({ children, params }: CandidateLayoutProps) {
   const { id } = await params;
-  const candidate = await getCandidate(id);
-
-  // SE NÃO EXISTIR CANDIDATO, REDIRECIONA IMEDIATAMENTE NO SERVIDOR
-  if (!candidate) {
-    redirect('/ranking');
+  // A página cliente diferencia 404 de indisponibilidade temporária da API.
+  // O layout não deve transformar falha de upstream em redirecionamento.
+  try {
+    await getCandidate(id);
+  } catch (error) {
+    console.warn('[Perfil] metadata indisponível; página continuará carregando:', error);
   }
 
   return <>{children}</>;

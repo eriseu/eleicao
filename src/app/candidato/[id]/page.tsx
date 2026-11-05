@@ -43,8 +43,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
   const [candidato, setCandidato] = useState<any | null>(null);
   const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
+  const [historicoDisponivel, setHistoricoDisponivel] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     async function loadPerfilCompleto() {
@@ -52,18 +55,23 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
       try {
         setLoading(true);
+        setLoadError(null);
         // 1. Consulta dados no Postgres via VPS
         const res = await fetch(`/api/candidato/${resolvedParams.id}`);
         
-        // SE NÃO ENCONTRAR NA API (status 404 ou !res.ok) -> REDIRECIONA DIRETO PARA /ranking
-        if (!res.ok) {
+        if (res.status === 404) {
           router.replace('/ranking');
+          return;
+        }
+        if (!res.ok) {
+          setLoadError('Não foi possível carregar este perfil agora. Tente novamente.');
           return;
         }
 
         const data = await res.json();
         const candData = data.candidato || {};
         const historico = data.historico || [];
+        setHistoricoDisponivel(data.historico_disponivel !== false);
 
         // Se a API retornar sucesso mas o objeto candidato vier vazio
         if (!candData || Object.keys(candData).length === 0) {
@@ -113,8 +121,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         }
       } catch (err) {
         console.error('Erro ao carregar perfil:', err);
-        // Em caso de erro grave na busca, redireciona para o ranking
-        router.replace('/ranking');
+        setLoadError('Não foi possível carregar este perfil agora. Tente novamente.');
       } finally {
         setLoading(false);
         setLoadingStats(false);
@@ -122,9 +129,23 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
     }
 
     loadPerfilCompleto();
-  }, [resolvedParams.id, router]);
+  }, [resolvedParams.id, retryCount, router]);
 
   if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
+  if (loadError) {
+    return (
+      <main className="mx-auto max-w-md px-4 py-12 text-center text-slate-100">
+        <p className="text-sm text-amber-200">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryCount((count) => count + 1)}
+          className="mt-4 rounded-2xl border border-amber-300/40 bg-slate-900 px-4 py-2 text-xs font-semibold text-amber-100"
+        >
+          Tentar novamente
+        </button>
+      </main>
+    );
+  }
   if (!candidato) return null; // Evita piscar a tela zerada enquanto faz o redirecionamento
 
   const candAtual = historicoCandidaturas[0] || candidato;
@@ -247,6 +268,12 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
         <div className="w-full mt-5 border-t border-white/10 pt-4">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Histórico Eleitoral</h3>
 
+          {!historicoDisponivel && (
+            <p className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              O histórico eleitoral está temporariamente indisponível. Os dados principais do perfil continuam visíveis.
+            </p>
+          )}
+
           {historicoCandidaturas.length > 0 ? (
             <div className="space-y-2.5">
               {historicoCandidaturas.map((cand: any, index: number) => (
@@ -301,7 +328,9 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
               ))}
             </div>
           ) : (
-            <p className="text-xs text-slate-500 text-center py-2">Nenhum histórico encontrado.</p>
+            <p className="text-xs text-slate-500 text-center py-2">
+              {historicoDisponivel ? 'Nenhum histórico encontrado.' : 'Não foi possível carregar o histórico.'}
+            </p>
           )}
         </div>
 

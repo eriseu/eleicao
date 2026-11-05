@@ -61,6 +61,8 @@ function RankingContent() {
   const loadRequestIdRef = useRef(0);
 
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [shareFeedback, setShareFeedback] = useState('');
   const [hasMore, setHasMore] = useState(true);
 
@@ -167,28 +169,34 @@ function RankingContent() {
   };
 
   const fetchRankingData = useCallback(async (currentPage: number, cargos: string[], targetHighlightId?: string) => {
-    try {
-      const queryParams = new URLSearchParams();
-      queryParams.append('uf', selectedUf);
-      cargos.forEach(cargo => queryParams.append('cargos', cargo));
-      if (selectedMunicipio) {
-        queryParams.append('municipio', selectedMunicipio);
-      }
+    const queryParams = new URLSearchParams();
+    queryParams.append('uf', selectedUf);
+    cargos.forEach(cargo => queryParams.append('cargos', cargo));
+    if (selectedMunicipio) {
+      queryParams.append('municipio', selectedMunicipio);
+    }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
-      if (!response.ok) return [];
+    const vpsApiUrl = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
+    const response = await fetch(`${vpsApiUrl}/api/candidatos-filtrados?${queryParams.toString()}`);
+    if (!response.ok) {
+      throw new Error(`VPS candidatos respondeu HTTP ${response.status}`);
+    }
 
-      const perfilIdsVps: string[] = await response.json();
-      if (!perfilIdsVps || perfilIdsVps.length === 0) return [];
+    const perfilIdsVps: unknown = await response.json();
+    if (!Array.isArray(perfilIdsVps)) {
+      throw new Error('VPS candidatos retornou um formato inválido');
+    }
+    if (perfilIdsVps.length === 0) return [];
 
       let actualPage = currentPage;
       if (targetHighlightId && perfilIdsVps.includes(targetHighlightId)) {
-        const { data: allRankedIds } = await supabase.rpc('get_ranking_paginado', {
+        const { data: allRankedIds, error: allRankedIdsError } = await supabase.rpc('get_ranking_paginado', {
           ids: perfilIdsVps,
           limite: perfilIdsVps.length,
           deslocamento: 0
         });
-        
+        if (allRankedIdsError) throw allRankedIdsError;
+
         if (allRankedIds) {
           const index = allRankedIds.findIndex((p: any) => p.id === targetHighlightId);
           if (index !== -1) {
@@ -207,7 +215,8 @@ function RankingContent() {
         deslocamento: from
       });
 
-      if (error || !data || data.length === 0) {
+      if (error) throw error;
+      if (!data || data.length === 0) {
         setHasMore(false);
         return [];
       }
@@ -215,7 +224,7 @@ function RankingContent() {
       setHasMore(data.length === ITEMS_PER_PAGE);
 
       const perfilIds = data.map((p: any) => p.id);
-      const candidaturas = (await fetchCandidaturasFromVPS(perfilIds)) || [];
+      const candidaturas = await fetchCandidaturasFromVPS(perfilIds, { throwOnError: true });
 
       // Ordena candidaturas trazidas para pegar a mais recente
       const candidaturasProcessadas = perfilIds.map((id: any) => {
@@ -231,11 +240,16 @@ function RankingContent() {
       const perfisValidosIds = new Set(candidaturasProcessadas.map((c: any) => c.perfil_id));
       const perfisFiltrados = data.filter((p: any) => perfisValidosIds.has(p.id));
 
+      console.info('[Ranking] dados agregados', {
+        uf: selectedUf,
+        municipio: selectedMunicipio || null,
+        idsVps: perfilIdsVps.length,
+        perfisRpc: data.length,
+        candidaturas: candidaturas.length,
+        descartadosPorFiltro: data.length - perfisFiltrados.length,
+      });
+
       return processCandidaturas(perfisFiltrados, candidaturas, cargos);
-    } catch (err) {
-      console.error('Erro ao buscar dados do ranking:', err);
-      return [];
-    }
   }, [selectedUf, selectedMunicipio, page]);
 
   useEffect(() => {
@@ -244,17 +258,28 @@ function RankingContent() {
     const loadRanking = async () => {
       const currentRequestId = ++loadRequestIdRef.current;
       setLoading(true);
+      setLoadError(null);
+      setHasMore(true);
       const cargos = getCargosPorEscopo();
 
-      const rankingData = await fetchRankingData(page, cargos, activeHighlightId);
-      if (currentRequestId !== loadRequestIdRef.current) return;
+      try {
+        const rankingData = await fetchRankingData(page, cargos, activeHighlightId);
+        if (currentRequestId !== loadRequestIdRef.current) return;
 
-      setRanking(rankingData);
-      setLoading(false);
+        setRanking(rankingData);
+      } catch (error) {
+        if (currentRequestId !== loadRequestIdRef.current) return;
+        console.error('Erro ao buscar dados do ranking:', error);
+        setRanking([]);
+        setHasMore(false);
+        setLoadError('Não foi possível carregar o ranking agora. Tente novamente.');
+      } finally {
+        if (currentRequestId === loadRequestIdRef.current) setLoading(false);
+      }
     };
 
     void loadRanking();
-  }, [isMounted, activeHighlightId, page, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
+  }, [isMounted, activeHighlightId, page, retryCount, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
   useEffect(() => {
     if (!activeHighlightId || loading) return;
@@ -458,6 +483,17 @@ function RankingContent() {
           {loading ? (
             <div className="rounded-[32px] border border-dashed border-slate-700 bg-slate-900/80 p-8 text-center text-sm text-slate-400">
               Carregando candidatos...
+            </div>
+          ) : loadError ? (
+            <div className="rounded-[32px] border border-amber-500/30 bg-amber-500/10 p-8 text-center text-sm text-amber-100">
+              <p>{loadError}</p>
+              <button
+                type="button"
+                onClick={() => setRetryCount((count) => count + 1)}
+                className="mt-4 rounded-2xl border border-amber-300/40 bg-slate-950 px-4 py-2 text-xs font-semibold text-amber-100 transition hover:bg-slate-900"
+              >
+                Tentar novamente
+              </button>
             </div>
           ) : ranking.length > 0 ? (
             ranking.map((cand, index) => (

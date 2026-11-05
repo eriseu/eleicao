@@ -1,5 +1,19 @@
 import { NextResponse } from 'next/server';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
+import { supabase } from '@/lib/supabaseClient';
+import type { Candidatura } from '@/types';
+
+type Perfil = {
+  id?: string;
+  nome_completo?: string | null;
+  cpf?: string | null;
+  elo_score?: number | null;
+  matches_count?: number | null;
+};
+
+function asPerfil(value: unknown): Perfil | null {
+  return value && typeof value === 'object' ? value as Perfil : null;
+}
 
 const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
 
@@ -15,15 +29,23 @@ export async function GET(
     }
 
     // 1. Busca as candidaturas do perfil no VPS usando a função já testada
-    const candidaturas = await fetchCandidaturasFromVPS([id]);
+    let candidaturas: Candidatura[] = [];
+    let historicoDisponivel = true;
+    try {
+      candidaturas = await fetchCandidaturasFromVPS([id], { throwOnError: true });
+    } catch (error) {
+      historicoDisponivel = false;
+      console.warn('[Perfil] histórico indisponível na VPS:', error);
+    }
 
     // Ordena do ano mais recente ao mais antigo
-    const candidaturasOrdenadas = (candidaturas || []).sort(
-      (a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
+    const candidaturasOrdenadas = candidaturas.sort(
+      (a, b) => Number(b.ano_eleicao) - Number(a.ano_eleicao)
     );
 
     // 2. Busca os dados da tabela de perfil se disponível
-    let perfil: any = null;
+    let perfil: Perfil | null = null;
+    let perfilUpstreamIndisponivel = false;
     try {
       const perfilResponse = await fetch(`${VPS_API_URL}/api/perfis-candidatos?id=${id}`, {
         headers: { 'Content-Type': 'application/json' },
@@ -31,16 +53,40 @@ export async function GET(
 
       if (perfilResponse.ok) {
         const perfis = await perfilResponse.json();
-        perfil = Array.isArray(perfis) ? perfis[0] : perfis;
+        perfil = Array.isArray(perfis) ? asPerfil(perfis[0]) : asPerfil(perfis);
+      } else if (perfilResponse.status !== 404) {
+        perfilUpstreamIndisponivel = true;
       }
-    } catch (e) {
+    } catch {
+      perfilUpstreamIndisponivel = true;
       console.warn('Não foi possível buscar perfil diretamente, usando dados das candidaturas');
+    }
+
+    if (!perfil) {
+      const { data: perfilSupabase, error: perfilSupabaseError } = await supabase
+        .from('perfis_candidatos')
+        .select('id, nome_completo, cpf, elo_score, matches_count')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (perfilSupabaseError) {
+        perfilUpstreamIndisponivel = true;
+        console.warn('[Perfil] fallback Supabase indisponível:', perfilSupabaseError.message);
+      } else if (perfilSupabase) {
+        perfil = perfilSupabase;
+      }
     }
 
     const candidaturaMaisRecente = candidaturasOrdenadas[0];
 
     // Se não encontrou nem perfil e nem histórico de candidaturas, aí sim é 404
     if (!perfil && !candidaturaMaisRecente) {
+      if (perfilUpstreamIndisponivel || !historicoDisponivel) {
+        return NextResponse.json(
+          { error: 'Fontes de dados temporariamente indisponíveis' },
+          { status: 502 },
+        );
+      }
       return NextResponse.json({ error: 'Candidato não encontrado' }, { status: 404 });
     }
 
@@ -63,12 +109,13 @@ export async function GET(
     return NextResponse.json({
       candidato,
       historico: candidaturasOrdenadas,
+      historico_disponivel: historicoDisponivel,
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro ao buscar candidato na VPS:', error);
     return NextResponse.json(
-      { error: 'Erro interno ao consultar o candidato', details: error.message },
+      { error: 'Erro interno ao consultar o candidato' },
       { status: 500 }
     );
   }

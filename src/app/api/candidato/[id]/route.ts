@@ -1,3 +1,4 @@
+import { getVpsApiUrl } from '@/lib/vpsUrl';
 import { NextResponse } from 'next/server';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
 import { supabase } from '@/lib/supabaseClient';
@@ -17,7 +18,6 @@ function asPerfil(value: unknown): Perfil | null {
   return typeof perfil.id === 'string' && perfil.id ? perfil : null;
 }
 
-const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
 
 export async function GET(
   request: Request,
@@ -49,7 +49,7 @@ export async function GET(
     let perfil: Perfil | null = null;
     let perfilUpstreamIndisponivel = false;
     try {
-      const perfilResponse = await fetch(`${VPS_API_URL}/api/perfis-candidatos?id=${encodeURIComponent(id)}`, {
+      const perfilResponse = await fetch(`${getVpsApiUrl()}/perfis-candidatos?id=${encodeURIComponent(id)}`, {
         headers: { 'Content-Type': 'application/json' },
       });
 

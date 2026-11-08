@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any, react/no-unescaped-entities */
 
+import { getVpsApiUrl } from '@/lib/vpsUrl';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchCandidaturasFromVPS } from '@/lib/vpsClient';
@@ -106,7 +107,7 @@ export default function DueloClient() {
 
     async function loadMunicipios() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
+        const response = await fetch(`${getVpsApiUrl()}/municipios?uf=${selectedUf}`);
         if (!response.ok) {
           setMunicipios([]);
           return;
@@ -224,7 +225,7 @@ export default function DueloClient() {
     const results = await Promise.all(
       chunks.map(async (chunk) => {
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/perfis?ids=${chunk.join(',')}`);
+          const res = await fetch(`${getVpsApiUrl()}/perfis?ids=${chunk.join(',')}`);
           if (!res.ok) return [];
           return await res.json();
         } catch {
@@ -314,7 +315,7 @@ export default function DueloClient() {
         queryParams.append('municipio', selectedMunicipio);
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/candidatos-filtrados?${queryParams.toString()}`);
+      const response = await fetch(`${getVpsApiUrl()}/candidatos-filtrados?${queryParams.toString()}`);
       if (!response.ok) {
         setCandidates([]);
         setC1(null);

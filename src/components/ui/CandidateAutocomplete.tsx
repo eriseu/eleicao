@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/immutability */
 
+import { getVpsApiUrl } from '@/lib/vpsUrl';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Candidato } from '@/types';
 import { fetchJsonSafely } from '@/lib/robustJson';
@@ -186,7 +187,7 @@ export default function CandidateAutocomplete({
           if (!profileId) return [];
 
           if (!cacheHistoricoPerfil[profileId]) {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidaturas/${encodeURIComponent(profileId)}`);
+            const response = await fetch(`${getVpsApiUrl()}/candidaturas/${encodeURIComponent(profileId)}`);
             const payload = response.ok ? await response.json() : null;
             cacheHistoricoPerfil[profileId] = Array.isArray(payload?.candidaturas) ? payload.candidaturas : [];
           }
@@ -214,7 +215,7 @@ export default function CandidateAutocomplete({
         return;
       }
 
-      void fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br'}/api/candidatos-completos?uf=${encodeURIComponent(uf.toUpperCase())}`)
+      void fetch(`${getVpsApiUrl()}/candidatos-completos?uf=${encodeURIComponent(uf.toUpperCase())}`)
         .then((response) => response.ok ? response.json() : [])
         .then((data) => {
           const completos = Array.isArray(data) ? data : [];

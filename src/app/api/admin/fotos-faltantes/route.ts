@@ -1,10 +1,10 @@
+import { getVpsApiUrl } from '@/lib/vpsUrl';
 import { NextResponse } from 'next/server';
 
-const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
 
 export async function GET() {
   try {
-    const response = await fetch(`${VPS_API_URL}/api/admin/fotos-faltantes`, {
+    const response = await fetch(`${getVpsApiUrl()}/admin/fotos-faltantes`, {
       cache: 'no-store',
     });
     const body = await response.text();

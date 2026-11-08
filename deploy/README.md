@@ -23,8 +23,27 @@ docker compose logs --tail=80 frontend-politica
 curl -I http://127.0.0.1:3000
 ```
 
-NEXT_PUBLIC_* é incorporado ao JavaScript no build. Por isso, a API usa o domínio
-HTTPS público, e não http://api-candidaturas:8000, que o navegador não resolve.
+O navegador consulta /api/vps no próprio domínio. O Next.js encaminha somente
+as rotas públicas permitidas para VPS_API_URL=http://api-candidaturas:8000,
+definida no environment do serviço frontend-politica. Essa variável é privada,
+lida em runtime, e não deve receber o prefixo NEXT_PUBLIC_. Fora do Docker,
+o servidor usa NEXT_PUBLIC_VPS_API_URL como fallback.
+
+Para verificar a API interna sem depender do domínio público:
+
+```bash
+docker compose exec frontend-politica node -e 'fetch("http://api-candidaturas:8000/api/candidatos-filtrados?uf=BR&cargos=PRESIDENTE").then(async r => { console.log(r.status); console.log((await r.text()).slice(0, 300)); }).catch(e => { console.error(e.message); process.exit(1); })'
+docker compose logs --tail=80 api-candidaturas
+```
+
+Se a consulta interna falhar, a API/porta/rede precisa ser corrigida no servidor;
+o proxy do frontend não torna um backend indisponível acessível.
+
+CSS antigo com 404 não é um problema de configuração de MIME. Após o deploy,
+reabra a página sem cache. Verifique se o proxy reverso encaminha /_next/static
+para o mesmo container que serve o HTML e se há HTML antigo no cache do CDN.
+A chamada /api/candidatos não é feita pela versão atual da página inicial;
+se ela continuar aparecendo, verifique se a versão atual foi realmente publicada.
 
 .dockerignore exclui .env, node_modules, caches, ambientes Python e public/fotos.
 As fotos dos candidatos são servidas pela URL pública já usada pelo aplicativo;

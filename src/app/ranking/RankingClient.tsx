@@ -2,6 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 
+import { getVpsApiUrl } from '@/lib/vpsUrl';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
@@ -75,8 +76,8 @@ function RankingContent() {
     setMunicipios([]);
     async function loadMunicipios() {
       try {
-        const base = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
-        const response = await fetch(`${base}/api/municipios?uf=${selectedUf}`, { signal: controller.signal });
+
+        const response = await fetch(`${getVpsApiUrl()}/municipios?uf=${selectedUf}`, { signal: controller.signal });
         if (!response.ok) throw new Error(`Municípios: HTTP ${response.status}`);
         const data = await response.json();
         if (!Array.isArray(data)) throw new Error('Formato de municípios inválido');
@@ -163,8 +164,7 @@ function RankingContent() {
       queryParams.append('municipio', selectedMunicipio);
     }
 
-    const vpsApiUrl = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
-    const response = await fetch(`${vpsApiUrl}/api/candidatos-filtrados?${queryParams.toString()}`);
+    const response = await fetch(`${getVpsApiUrl()}/candidatos-filtrados?${queryParams.toString()}`);
     if (!response.ok) {
       throw new Error(`VPS candidatos respondeu HTTP ${response.status}`);
     }

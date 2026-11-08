@@ -14,14 +14,6 @@ const cspHeader = `
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  async rewrites() {
-    return [
-      {
-        source: "/api/vps/:path*",
-        destination: "https://api.centraleti.com.br/api/:path*",
-      },
-    ];
-  },
   async headers() {
     return [
       {

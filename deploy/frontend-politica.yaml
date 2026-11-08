@@ -18,6 +18,7 @@ frontend-politica:
   env_file:
     - .env
   environment:
+    VPS_API_URL: http://api-candidaturas:8000
     NODE_ENV: production
     PORT: "3000"
     HOSTNAME: 0.0.0.0

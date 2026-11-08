@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+.env
+.env.*
+*.log
+*.tsbuildinfo
+.tmp
+work
+outputs
+.venv
+**/.venv
+public/fotos
+*.bkp

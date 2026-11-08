@@ -1,0 +1,33 @@
+# Substitua apenas o serviço frontend-politica no docker-compose.yaml existente.
+# Este arquivo é um trecho, não um Compose independente.
+frontend-politica:
+  build:
+    context: /www/wwwroot/politica.centraleti.com.br
+    dockerfile: Dockerfile
+    args:
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Defina a URL do Supabase}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Defina a chave anon ou publishable, nunca service_role}
+      NEXT_PUBLIC_R2_URL: ${NEXT_PUBLIC_R2_URL:-}
+      NEXT_PUBLIC_VPS_API_URL: https://api.centraleti.com.br
+      NEXT_PUBLIC_VPS_URL: https://f.centraleti.com.br/f
+      NEXT_PUBLIC_SITE_URL: https://politica.centraleti.com.br
+  container_name: frontend-politica
+  restart: unless-stopped
+  ports:
+    - "3000:3000"
+  env_file:
+    - .env
+  environment:
+    NODE_ENV: production
+    PORT: "3000"
+    HOSTNAME: 0.0.0.0
+    NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    NEXT_PUBLIC_R2_URL: ${NEXT_PUBLIC_R2_URL:-}
+    NEXT_PUBLIC_VPS_API_URL: https://api.centraleti.com.br
+    NEXT_PUBLIC_VPS_URL: https://f.centraleti.com.br/f
+    NEXT_PUBLIC_SITE_URL: https://politica.centraleti.com.br
+  depends_on:
+    - api-candidaturas
+  networks:
+    - postgres-network

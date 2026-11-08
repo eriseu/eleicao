@@ -10,6 +10,7 @@ import test from 'node:test';
 process.env.NEXT_PUBLIC_SITE_URL = 'https://politica.centraleti.com.br';
 const empty = 'export default function Component() { return null; }';
 const mocks = {
+  'next/server': 'export const NextResponse = Response;',
   'react/jsx-runtime': 'export const jsx = () => null; export const jsxs = jsx; export const Fragment = null;',
   'react': 'export const cache = fn => fn; export const Suspense = () => null;',
   '@/lib/supabaseClient': `export const supabase = { from() { return { select() { return this }, eq() { return this }, async in(column, ids) { return {data: ids.map(id => ({id, nome_completo: id}))} }, async maybeSingle() { return {data: {id: 'test-id', nome_completo: 'Candidato Teste'}} } } } };`,
@@ -94,4 +95,26 @@ test('link curto de duelo usa a rota OG com os dois candidatos', async () => {
   assert.equal(url.pathname, '/api/og');
   assert.equal(url.searchParams.get('c1'), 'one');
   assert.equal(url.searchParams.get('c2'), 'two');
+});
+
+// A rota deve manter o contexto da foto e ignorar respostas vazias de perfil.
+const { GET: getCandidateProfile } = await import('../src/app/api/candidato/[id]/route.ts');
+test('perfil preserva o ano da candidatura usado na URL da foto', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ id: 'test-id', nome_completo: 'Nome VPS' }));
+  const response = await getCandidateProfile(new Request('https://example.com/api/candidato/test-id'), {
+    params: Promise.resolve({ id: 'test-id' }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.candidato.ano_eleicao, 2024);
+  assert.equal(body.candidato.nome_completo, 'Nome VPS');
+});
+test('perfil vazio na VPS permite fallback para o Supabase', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({}));
+  const response = await getCandidateProfile(new Request('https://example.com/api/candidato/test-id'), {
+    params: Promise.resolve({ id: 'test-id' }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.candidato.nome_completo, 'Candidato Teste');
 });

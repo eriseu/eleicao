@@ -10,7 +10,7 @@ import { Candidato } from '@/types';
 import CandidateImage from '@/components/ui/CandidateImage';
 import Link from 'next/link';
 import { ACTIVE_ELECTION_YEARS, AVAILABLE_UFS } from '@/constants/elections';
-import { buildMunicipioOptions, buildStateOptions, getStateNameFromUf, STATE_CAPITAIS } from '@/lib/municipioOptions';
+import { buildMunicipioOptions, buildStateOptions, getStateNameFromUf, normalizeText, STATE_CAPITAIS } from '@/lib/municipioOptions';
 
 // Helper para validar campos ignorando nulos e marcadores
 function eValido(valor: any): boolean {
@@ -55,10 +55,10 @@ function RankingContent() {
   const [ranking, setRanking] = useState<Candidato[]>([]);
   const [page, setPage] = useState(0);
   const [municipios, setMunicipios] = useState<Array<{ value: string; label: string }>>([]);
-  const [selectedUf, setSelectedUf] = useState(initialUf);
-  const [selectedMunicipio, setSelectedMunicipio] = useState(searchParams.get('municipio') || '');
-  const [activeHighlightId, setActiveHighlightId] = useState(searchParams.get('highlight') || '');
-  const loadRequestIdRef = useRef(0);
+  const selectedUf = initialUf;
+  const selectedMunicipio = selectedUf === 'BR' ? '' : searchParams.get('municipio')?.trim() || '';
+  const activeHighlightId = searchParams.get('highlight') || '';
+  const resolvedHighlightRef = useRef('');
 
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -67,42 +67,26 @@ function RankingContent() {
   const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    const ufParam = searchParams.get('uf')?.toUpperCase();
-    if (ufParam && (AVAILABLE_UFS as readonly string[]).includes(ufParam)) {
-      setSelectedUf(ufParam as any);
-    }
-    const munParam = searchParams.get('municipio');
-    if (munParam !== null) {
-      setSelectedMunicipio(munParam);
-    }
-
-    const nextHighlightId = searchParams.get('highlight') || '';
-    if (nextHighlightId) {
-      setActiveHighlightId(nextHighlightId);
-      return;
-    }
-
-    setActiveHighlightId('');
-  }, [searchParams]);
-
-  useEffect(() => {
+    const controller = new AbortController();
     if (selectedUf === 'BR') {
       setMunicipios(buildStateOptions());
       return;
     }
-
+    setMunicipios([]);
     async function loadMunicipios() {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_VPS_API_URL}/api/municipios?uf=${selectedUf}`);
-      if (!response.ok) {
-        console.error('Falha ao buscar municípios do VPS');
-        setMunicipios([]);
-        return;
+      try {
+        const base = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
+        const response = await fetch(`${base}/api/municipios?uf=${selectedUf}`, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Municípios: HTTP ${response.status}`);
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error('Formato de municípios inválido');
+        if (!controller.signal.aborted) setMunicipios(buildMunicipioOptions(data, selectedUf));
+      } catch (error) {
+        if (!controller.signal.aborted) console.error('Falha ao buscar municípios', error);
       }
-      const data = await response.json();
-      setMunicipios(buildMunicipioOptions(data || [], selectedUf));
     }
-
     void loadMunicipios();
+    return () => controller.abort();
   }, [selectedUf]);
 
   const getCargosPorEscopo = useCallback(() => {
@@ -115,7 +99,7 @@ function RankingContent() {
     return CARGOS_POR_ESCOPO.estadual;
   }, [selectedUf, selectedMunicipio]);
 
-  const processCandidaturas = (perfis: any[], candidaturas: any[], cargosPermitidos: string[]): Candidato[] => {
+  const processCandidaturas = useCallback((perfis: any[], candidaturas: any[], cargosPermitidos: string[]): Candidato[] => {
     const perfisIncluidos = new Set<string>();
 
     return perfis.flatMap((perfil) => {
@@ -132,12 +116,15 @@ function RankingContent() {
 
       // 1. Procura a candidatura mais recente que se encaixe nos filtros atuais
       const candidaturaCorrespondente = sortedCands.find((c: any) => 
+        cargosPermitidos.includes(normalizeText(c.cargo)) &&
+        (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
         (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
-        (!selectedMunicipio || (c.municipio || '').toUpperCase().trim() === selectedMunicipio.toUpperCase().trim())
+        (!selectedMunicipio || normalizeText(c.municipio) === normalizeText(selectedMunicipio))
       );
 
-      // 2. Se não achar filtro específico, pega estritamente a mais recente do histórico geral
-      const candidaturaPrincipal = candidaturaCorrespondente || sortedCands[0];
+      // Não exibe uma candidatura de outro cargo ou região.
+      const candidaturaPrincipal = candidaturaCorrespondente;
+      if (!candidaturaPrincipal) return [];
       const fotoFinal = candidaturaPrincipal.foto || candidaturaPrincipal.sq_candidato || '';
 
       return [{
@@ -166,7 +153,7 @@ function RankingContent() {
         },
       }];
     });
-  };
+  }, [selectedUf, selectedMunicipio]);
 
   const fetchRankingData = useCallback(async (currentPage: number, cargos: string[], targetHighlightId?: string) => {
     const queryParams = new URLSearchParams();
@@ -186,7 +173,7 @@ function RankingContent() {
     if (!Array.isArray(perfilIdsVps)) {
       throw new Error('VPS candidatos retornou um formato inválido');
     }
-    if (perfilIdsVps.length === 0) return [];
+    if (perfilIdsVps.length === 0) return { ranking: [], actualPage: 0, hasMore: false };
 
       let actualPage = currentPage;
       if (targetHighlightId && perfilIdsVps.includes(targetHighlightId)) {
@@ -201,9 +188,7 @@ function RankingContent() {
           const index = allRankedIds.findIndex((p: any) => p.id === targetHighlightId);
           if (index !== -1) {
             actualPage = Math.floor(index / ITEMS_PER_PAGE);
-            if (actualPage !== page) {
-              setPage(actualPage);
-            }
+
           }
         }
       }
@@ -217,68 +202,52 @@ function RankingContent() {
 
       if (error) throw error;
       if (!data || data.length === 0) {
-        setHasMore(false);
-        return [];
+        return { ranking: [], actualPage, hasMore: false };
       }
 
-      setHasMore(data.length === ITEMS_PER_PAGE);
 
       const perfilIds = data.map((p: any) => p.id);
       const candidaturas = await fetchCandidaturasFromVPS(perfilIds, { throwOnError: true });
 
-      // Ordena candidaturas trazidas para pegar a mais recente
-      const candidaturasProcessadas = perfilIds.map((id: any) => {
-        const candsDoPerfil = (candidaturas as any[]).filter((c: any) =>
-          c.perfil_id === id &&
-          (ACTIVE_ELECTION_YEARS as readonly number[]).includes(Number(c.ano_eleicao)) &&
-          (selectedUf === 'BR' || c.uf?.toUpperCase() === selectedUf.toUpperCase()) &&
-          (!selectedMunicipio || c.municipio?.trim().toUpperCase() === selectedMunicipio.trim().toUpperCase())
-        );
-        return candsDoPerfil.sort((a: any, b: any) => Number(b.ano_eleicao) - Number(a.ano_eleicao))[0];
-      }).filter(Boolean);
-
-      const perfisValidosIds = new Set(candidaturasProcessadas.map((c: any) => c.perfil_id));
-      const perfisFiltrados = data.filter((p: any) => perfisValidosIds.has(p.id));
-
-      console.info('[Ranking] dados agregados', {
-        uf: selectedUf,
-        municipio: selectedMunicipio || null,
-        idsVps: perfilIdsVps.length,
-        perfisRpc: data.length,
-        candidaturas: candidaturas.length,
-        descartadosPorFiltro: data.length - perfisFiltrados.length,
-      });
-
-      return processCandidaturas(perfisFiltrados, candidaturas, cargos);
-  }, [selectedUf, selectedMunicipio, page]);
+      return {
+        ranking: processCandidaturas(data, candidaturas, cargos),
+        actualPage,
+        hasMore: from + data.length < perfilIdsVps.length,
+      };
+  }, [selectedUf, selectedMunicipio, processCandidaturas]);
 
   useEffect(() => {
     if (!isMounted) return;
 
+    let cancelled = false;
     const loadRanking = async () => {
-      const currentRequestId = ++loadRequestIdRef.current;
       setLoading(true);
       setLoadError(null);
       setHasMore(true);
       const cargos = getCargosPorEscopo();
 
       try {
-        const rankingData = await fetchRankingData(page, cargos, activeHighlightId);
-        if (currentRequestId !== loadRequestIdRef.current) return;
+        const highlightKey = `${selectedUf}/${selectedMunicipio}/${activeHighlightId}`;
+        const rankingData = await fetchRankingData(page, cargos, resolvedHighlightRef.current === highlightKey ? undefined : activeHighlightId);
+        if (cancelled) return;
 
-        setRanking(rankingData);
+        resolvedHighlightRef.current = highlightKey;
+        setRanking(rankingData.ranking);
+        setPage(rankingData.actualPage);
+        setHasMore(rankingData.hasMore);
       } catch (error) {
-        if (currentRequestId !== loadRequestIdRef.current) return;
+        if (cancelled) return;
         console.error('Erro ao buscar dados do ranking:', error);
         setRanking([]);
         setHasMore(false);
         setLoadError('Não foi possível carregar o ranking agora. Tente novamente.');
       } finally {
-        if (currentRequestId === loadRequestIdRef.current) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     void loadRanking();
+    return () => { cancelled = true; };
   }, [isMounted, activeHighlightId, page, retryCount, selectedUf, selectedMunicipio, getCargosPorEscopo, fetchRankingData]);
 
   useEffect(() => {
@@ -297,41 +266,19 @@ function RankingContent() {
     setPage(0);
   }, [selectedUf, selectedMunicipio]);
 
-  useEffect(() => {
-    if (!isMounted) return;
+  const updateFilters = (uf: string, municipio = '') => {
+    setPage(0);
+    const params = new URLSearchParams({ uf });
+    if (uf !== 'BR' && municipio) params.set('municipio', municipio);
+    router.replace(`/ranking?${params}`, { scroll: false });
+  };
 
-    const params = new URLSearchParams();
-    if (selectedUf) params.set('uf', selectedUf);
-    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
-    if (activeHighlightId) params.set('highlight', activeHighlightId);
-
-    const nextUrl = `/ranking?${params.toString()}`;
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
-
-    if (currentUrl !== nextUrl) {
-      router.replace(nextUrl, { scroll: false });
-    }
-  }, [isMounted, selectedUf, selectedMunicipio, activeHighlightId, router]);
-
-  const syncRankingUrl = useCallback((preserveHighlight = false) => {
-    const params = new URLSearchParams();
-    if (selectedUf) params.set('uf', selectedUf);
-    if (selectedMunicipio) params.set('municipio', selectedMunicipio);
-    if (preserveHighlight && activeHighlightId) params.set('highlight', activeHighlightId);
-
-    const nextUrl = `/ranking?${params.toString()}`;
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
-
-    if (currentUrl !== nextUrl) {
-      router.replace(nextUrl, { scroll: false });
-    }
-  }, [activeHighlightId, router, selectedMunicipio, selectedUf]);
-
-  const handlePageChange = useCallback((nextPage: number) => {
+  const handlePageChange = (nextPage: number) => {
     setPage(nextPage);
-    setActiveHighlightId('');
-    syncRankingUrl(false);
-  }, [syncRankingUrl]);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('highlight');
+    router.replace(`/ranking?${params}`, { scroll: false });
+  };
 
   const handleShare = async () => {
     try {
@@ -396,13 +343,7 @@ function RankingContent() {
               <select
                 className="min-w-0 max-w-full w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={selectedUf}
-                onChange={(event) => {
-                  setSelectedUf(event.target.value);
-                  setSelectedMunicipio('');
-                  setPage(0);
-                  setActiveHighlightId('');
-                  syncRankingUrl(false);
-                }}
+                onChange={(event) => updateFilters(event.target.value)}
               >
                 <option value="BR">Brasil</option>
                 {AVAILABLE_UFS.filter((uf) => uf !== 'BR').map((uf) => (
@@ -417,28 +358,9 @@ function RankingContent() {
               <select
                 className="min-w-0 max-w-full w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white shadow-inner outline-none focus:border-slate-500"
                 value={selectedMunicipio}
-                onChange={(event) => {
-                  const nextValue = event.target.value;
-
-                  if (selectedUf === 'BR') {
-                    if (!nextValue) {
-                      setSelectedUf('BR');
-                      setSelectedMunicipio('');
-                    } else {
-                      setSelectedUf(nextValue);
-                      setSelectedMunicipio('');
-                    }
-                    setPage(0);
-                    setActiveHighlightId('');
-                    syncRankingUrl(false);
-                    return;
-                  }
-
-                  setSelectedMunicipio(nextValue);
-                  setPage(0);
-                  setActiveHighlightId('');
-                  syncRankingUrl(false);
-                }}
+                onChange={(event) => selectedUf === 'BR'
+                  ? updateFilters(event.target.value || 'BR')
+                  : updateFilters(selectedUf, event.target.value)}
               >
                 <option value="">{selectedUf === 'BR' ? 'Todos os Estados' : 'Todos os Municípios'}</option>
                 {municipios.map((option, index) => {
@@ -464,11 +386,7 @@ function RankingContent() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedUf('BR');
-                  setSelectedMunicipio('');
-                  setPage(0);
-                  setActiveHighlightId('');
-                  syncRankingUrl(false);
+                  updateFilters('BR');
                 }}
                 disabled={selectedUf === 'BR' && selectedMunicipio === ''}
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -548,7 +466,7 @@ function RankingContent() {
 
         <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-3xl border border-white/10 bg-slate-900/80 p-4 text-sm text-slate-400 shadow-xl shadow-slate-950/20">
           <button
-            disabled={page === 0}
+            disabled={loading || page === 0}
             onClick={() => handlePageChange(Math.max(page - 1, 0))}
             className="min-h-11 min-w-0 rounded-2xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs font-semibold transition sm:px-4 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -556,7 +474,7 @@ function RankingContent() {
           </button>
           <span className="text-center text-xs font-bold text-white sm:text-sm">Página {page + 1}</span>
           <button
-            disabled={!hasMore || ranking.length < ITEMS_PER_PAGE}
+            disabled={loading || !hasMore}
             onClick={() => handlePageChange(page + 1)}
             className="min-h-11 min-w-0 rounded-2xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs font-semibold transition sm:px-4 disabled:cursor-not-allowed disabled:opacity-50"
           >

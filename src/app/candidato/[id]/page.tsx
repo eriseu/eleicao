@@ -8,13 +8,37 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-function eValido(valor: any): boolean {
+type DadosCandidato = {
+  id?: string;
+  perfil_id?: string;
+  nome_completo?: string | null;
+  nome_urna?: string | null;
+  nome_social?: string | null;
+  data_nascimento?: string | null;
+  genero?: string | null;
+  cor_raca?: string | null;
+  cargo?: string | null;
+  partido?: string | null;
+  municipio?: string | null;
+  uf?: string | null;
+  ocupacao?: string | null;
+  grau_instrucao?: string | null;
+  situacao_candidatura?: string | null;
+  resultado_turno?: string | null;
+  nr_candidato?: string | number | null;
+  ano_eleicao?: number | null;
+  elo_score?: number | null;
+  matches_count?: number | null;
+  candidaturas?: DadosCandidato[];
+};
+
+function eValido(valor: unknown): boolean {
   if (valor === null || valor === undefined) return false;
   const str = String(valor).trim().toUpperCase();
   return str !== '' && str !== '#NULO' && str !== '#NULO#' && str !== 'NULO' && str !== '#NE#';
 }
 
-function calcularIdade(dataNascimento: string | null): number | null {
+function calcularIdade(dataNascimento: string | null | undefined): number | null {
   if (!eValido(dataNascimento)) return null;
   const nascimento = new Date(dataNascimento!);
   if (isNaN(nascimento.getTime())) return null;
@@ -29,7 +53,7 @@ function calcularIdade(dataNascimento: string | null): number | null {
   return idade;
 }
 
-function formatarGenero(genero: string | null): string | null {
+function formatarGenero(genero: string | null | undefined): string | null {
   if (!eValido(genero)) return null;
   const g = String(genero).trim().toUpperCase();
   if (g === 'M' || g === '2') return 'Masculino';
@@ -41,8 +65,8 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   const resolvedParams = React.use(params);
   const router = useRouter(); // <-- Hook de navegação
 
-  const [candidato, setCandidato] = useState<any | null>(null);
-  const [historicoCandidaturas, setHistoricoCandidaturas] = useState<any[]>([]);
+  const [candidato, setCandidato] = useState<DadosCandidato | null>(null);
+  const [historicoCandidaturas, setHistoricoCandidaturas] = useState<DadosCandidato[]>([]);
   const [historicoDisponivel, setHistoricoDisponivel] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -50,15 +74,20 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
     async function loadPerfilCompleto() {
       if (!resolvedParams.id) return;
 
       try {
         setLoading(true);
         setLoadError(null);
+        setLoadingStats(true);
+        setCandidato(null);
         // 1. Consulta dados no Postgres via VPS
-        const res = await fetch(`/api/candidato/${resolvedParams.id}`);
+        const res = await fetch(`/api/candidato/${encodeURIComponent(resolvedParams.id)}`, { signal: controller.signal });
         
+        if (cancelled) return;
         if (res.status === 404) {
           router.replace('/ranking');
           return;
@@ -70,7 +99,9 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
         const data = await res.json();
         const candData = data.candidato || {};
-        const historico = data.historico || [];
+        const historico = Array.isArray(data.historico)
+          ? [...data.historico].sort((a, b) => Number(b.ano_eleicao) - Number(a.ano_eleicao)) : [];
+        if (cancelled) return;
         setHistoricoDisponivel(data.historico_disponivel !== false);
 
         // Se a API retornar sucesso mas o objeto candidato vier vazio
@@ -101,10 +132,11 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           .eq('id', perfilIdParaConsulta)
           .maybeSingle();
 
+        if (cancelled) return;
         if (error) {
           console.error('Erro ao consultar Supabase:', error);
         } else if (perfilSupabase) {
-          setCandidato((prev: any) =>
+          setCandidato((prev) =>
             prev
               ? {
                   ...prev,
@@ -120,15 +152,19 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
           );
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('Erro ao carregar perfil:', err);
         setLoadError('Não foi possível carregar este perfil agora. Tente novamente.');
       } finally {
-        setLoading(false);
-        setLoadingStats(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingStats(false);
+        }
       }
     }
 
-    loadPerfilCompleto();
+    void loadPerfilCompleto();
+    return () => { cancelled = true; controller.abort(); };
   }, [resolvedParams.id, retryCount, router]);
 
   if (loading) return <p className="text-center mt-12 text-slate-400">Carregando perfil...</p>;
@@ -149,7 +185,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
   if (!candidato) return null; // Evita piscar a tela zerada enquanto faz o redirecionamento
 
   const candAtual = historicoCandidaturas[0] || candidato;
-  const anoReferencia = candAtual?.ano_eleicao || candidato?.ano_eleicao || '2026';
+  const anoReferencia = candAtual?.ano_eleicao || candidato?.ano_eleicao || 'Não informada';
   const idade = calcularIdade(candidato.data_nascimento);
   const nrCandidatoAtual = candAtual.nr_candidato || candidato.nr_candidato;
 
@@ -276,7 +312,7 @@ export default function Perfil({ params }: { params: Promise<{ id: string }> }) 
 
           {historicoCandidaturas.length > 0 ? (
             <div className="space-y-2.5">
-              {historicoCandidaturas.map((cand: any, index: number) => (
+              {historicoCandidaturas.map((cand, index) => (
                 <div key={index} className="bg-slate-950/60 border border-white/5 rounded-2xl p-3 flex items-center gap-3 text-xs">
                   
                   <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-700 bg-slate-900 flex-shrink-0">

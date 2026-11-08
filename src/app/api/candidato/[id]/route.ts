@@ -12,7 +12,9 @@ type Perfil = {
 };
 
 function asPerfil(value: unknown): Perfil | null {
-  return value && typeof value === 'object' ? value as Perfil : null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const perfil = value as Perfil;
+  return typeof perfil.id === 'string' && perfil.id ? perfil : null;
 }
 
 const VPS_API_URL = process.env.NEXT_PUBLIC_VPS_API_URL || 'https://api.centraleti.com.br';
@@ -47,7 +49,7 @@ export async function GET(
     let perfil: Perfil | null = null;
     let perfilUpstreamIndisponivel = false;
     try {
-      const perfilResponse = await fetch(`${VPS_API_URL}/api/perfis-candidatos?id=${id}`, {
+      const perfilResponse = await fetch(`${VPS_API_URL}/api/perfis-candidatos?id=${encodeURIComponent(id)}`, {
         headers: { 'Content-Type': 'application/json' },
       });
 
@@ -97,6 +99,7 @@ export async function GET(
       cpf: perfil?.cpf || null,
       elo_score: perfil?.elo_score ?? 1200,
       matches_count: perfil?.matches_count ?? 0,
+      ano_eleicao: candidaturaMaisRecente?.ano_eleicao || null,
       nome_urna: candidaturaMaisRecente?.nome_urna || perfil?.nome_completo,
       sq_candidato: candidaturaMaisRecente?.sq_candidato || null,
       cargo: candidaturaMaisRecente?.cargo || null,

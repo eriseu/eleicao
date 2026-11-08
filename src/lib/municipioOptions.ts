@@ -149,7 +149,7 @@ export function buildMunicipioOptions(rawMunicipios: Array<string | { municipio?
     .map(({ value, label }) => ({ value, label }));
 
   const capitalOptions = capital
-    ? [{ value: capital, label: capital.toUpperCase() }, ...sortedOptions]
+    ? [{ value: capital, label: capital.toUpperCase() }, ...sortedOptions.filter(option => normalizeText(option.value) !== normalizeText(capital))]
     : sortedOptions;
 
   return capitalOptions;
